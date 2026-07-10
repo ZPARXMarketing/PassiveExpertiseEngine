@@ -1,0 +1,46 @@
+/* ------------------------------------------------------------------
+   THEME TOKENS — "NeonFlux" stand-in
+   The real NeonFlux-design repo wasn't reachable from this session
+   (private, different org). Swap these variables for the real tokens
+   and the whole app follows. See TODO.md.
+   ------------------------------------------------------------------ */
+:root {
+  /* surfaces */
+  --bg: #07080d;
+  --bg-glow-1: rgba(42, 255, 163, 0.07);
+  --bg-glow-2: rgba(76, 141, 255, 0.06);
+  --surface: #10131c;
+  --surface-2: #171b28;
+  --surface-3: #1f2434;
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+
+  /* neon accents */
+  --neon: #2affa3;
+  --neon-soft: rgba(42, 255, 163, 0.14);
+  --neon-glow: rgba(42, 255, 163, 0.35);
+  --neon-dim: #17b877;
+  --cyan: #4cc9ff;
+  --cyan-soft: rgba(76, 201, 255, 0.13);
+  --violet: #a78bff;
+  --violet-soft: rgba(167, 139, 255, 0.14);
+  --danger: #ff5c7a;
+  --danger-soft: rgba(255, 92, 122, 0.15);
+
+  /* text */
+  --text: #eef1f8;
+  --text-dim: #9aa3b8;
+  --text-faint: #5c6478;
+
+  /* type */
+  --font-display: 'Space Grotesk', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* shape & motion */
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.45);
+  --glow-card: 0 0 0 1px rgba(42, 255, 163, 0.35), 0 0 26px rgba(42, 255, 163, 0.12);
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+}

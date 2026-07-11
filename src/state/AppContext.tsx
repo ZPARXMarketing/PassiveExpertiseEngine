@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer } from 'react'
 import type { Dispatch, ReactNode } from 'react'
 import type { FeedItem } from '../data/types'
+import type { Benchmark, Component, Resource } from '../data/blueprints'
 import { todaysThread } from '../data/feed'
 import { lessonById } from '../data/lessons'
 
@@ -12,11 +13,31 @@ export interface PlayerState {
   sourceItemId: string
 }
 
+/** A course the user mapped via the 80/20 audit — a self-contained snapshot. */
+export interface MappedCourse {
+  id: string
+  blueprintId: string
+  subject: string
+  field: string
+  oneLiner: string
+  isTemplate?: boolean
+  totalHours: number
+  mappingHours: number // 10% of total (Young's rule)
+  benchmarks: Benchmark[]
+  resources: Resource[]
+  components: Component[] // the full deconstruction
+  selectedIds: string[] // the vital ~20% the user kept
+  createdAt: number
+}
+
 export interface AppState {
   tab: Tab
   player: PlayerState | null
   tutorFromBeat: number | null // non-null = tutor sheet open, remembering the beat
   constellationUnitId: string | null
+  onboardingOpen: boolean // the "Map a course" 80/20 audit flow
+  cheatSheetCourseId: string | null // viewing a mapped course's one-page sheet
+  mappedCourses: MappedCourse[]
   completedLessons: string[]
   checkAnswers: Record<string, number> // feed item id -> chosen option index
   revealedRefreshes: string[]
@@ -37,6 +58,12 @@ export type Action =
   | { type: 'openConstellation'; unitId: string }
   | { type: 'closeConstellation' }
   | { type: 'queueLesson'; lessonId: string }
+  | { type: 'openOnboarding' }
+  | { type: 'closeOnboarding' }
+  | { type: 'saveCourse'; course: MappedCourse }
+  | { type: 'viewCheatSheet'; courseId: string }
+  | { type: 'closeCheatSheet' }
+  | { type: 'removeCourse'; courseId: string }
   | { type: 'showToast'; message: string }
   | { type: 'clearToast' }
   | { type: 'resetProgress' }
@@ -45,7 +72,7 @@ const PERSIST_KEY = 'pee-progress-v1'
 
 type Persisted = Pick<
   AppState,
-  'completedLessons' | 'checkAnswers' | 'revealedRefreshes' | 'queuedLessonIds'
+  'completedLessons' | 'checkAnswers' | 'revealedRefreshes' | 'queuedLessonIds' | 'mappedCourses'
 >
 
 const emptyProgress: Persisted = {
@@ -53,6 +80,7 @@ const emptyProgress: Persisted = {
   checkAnswers: {},
   revealedRefreshes: [],
   queuedLessonIds: [],
+  mappedCourses: [],
 }
 
 const loadProgress = (): Persisted => {
@@ -70,6 +98,8 @@ const initialState: AppState = {
   player: null,
   tutorFromBeat: null,
   constellationUnitId: null,
+  onboardingOpen: false,
+  cheatSheetCourseId: null,
   toast: null,
   ...loadProgress(),
 }
@@ -127,6 +157,33 @@ function reducer(state: AppState, action: Action): AppState {
         tab: 'feed',
         toast: `Queued next in your feed: ${lessonById(action.lessonId).title}`,
       }
+    case 'openOnboarding':
+      return { ...state, onboardingOpen: true }
+    case 'closeOnboarding':
+      return { ...state, onboardingOpen: false }
+    case 'saveCourse':
+      return {
+        ...state,
+        onboardingOpen: false,
+        mappedCourses: [
+          action.course,
+          ...state.mappedCourses.filter((c) => c.id !== action.course.id),
+        ],
+        tab: 'map',
+        cheatSheetCourseId: action.course.id,
+        toast: `${action.course.subject} mapped — here's your one page`,
+      }
+    case 'viewCheatSheet':
+      return { ...state, cheatSheetCourseId: action.courseId }
+    case 'closeCheatSheet':
+      return { ...state, cheatSheetCourseId: null }
+    case 'removeCourse':
+      return {
+        ...state,
+        cheatSheetCourseId: state.cheatSheetCourseId === action.courseId ? null : state.cheatSheetCourseId,
+        mappedCourses: state.mappedCourses.filter((c) => c.id !== action.courseId),
+        toast: 'Course removed',
+      }
     case 'showToast':
       return { ...state, toast: action.message }
     case 'clearToast':
@@ -150,10 +207,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
   useEffect(() => {
-    const { completedLessons, checkAnswers, revealedRefreshes, queuedLessonIds } = state
+    const { completedLessons, checkAnswers, revealedRefreshes, queuedLessonIds, mappedCourses } =
+      state
     localStorage.setItem(
       PERSIST_KEY,
-      JSON.stringify({ completedLessons, checkAnswers, revealedRefreshes, queuedLessonIds }),
+      JSON.stringify({
+        completedLessons,
+        checkAnswers,
+        revealedRefreshes,
+        queuedLessonIds,
+        mappedCourses,
+      }),
     )
   }, [state])
 

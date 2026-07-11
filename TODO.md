@@ -15,7 +15,14 @@
 - [ ] App icon + splash / PWA manifest for install-to-home-screen.
 
 ## Product
-- [ ] Onboarding flow: pick a subject → engine builds the syllabus/knowledge map.
+- [x] Course-mapping onboarding — the **80/20 Audit** (Map tab → "Map a new course"):
+      pick a subject + time budget → 10% mapping survey (Young) → select the vital
+      ~20% (Ferriss) → compress to a one-page cheat sheet gated at 7 lines. See
+      `src/data/blueprints.ts` + `src/components/Onboarding.tsx`.
+- [ ] Turn a mapped course into a live feed + knowledge map (today it produces the
+      one-page overview; only the sample Quantum Physics degree has a full syllabus).
+- [ ] Real syllabus scan for arbitrary subjects (unknown subjects use a generic
+      template blueprint right now).
 - [ ] Wire lessons + tutor to the Claude API (content is hand-written mock data
       for Quantum Physics right now — see `src/data/`).
 - [ ] Real spaced-repetition scheduler (forgetting-curve timing); reviews are

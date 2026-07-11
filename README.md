@@ -31,12 +31,33 @@ Three tabs, three overlays:
 | **Feed** (home) | "Today's thread" — new-lesson cards, inline quick checks, and 30-second refreshes you consume in place. The thing you reach for in an idle window. |
 | **Story player** | Only *new* concepts get it: 5 cinematic beats, tap right/left to advance, beat 6 is the quick check that closes the lesson. |
 | **Tutor** | A lifeline, not a destination — summon it from any beat with "I don't get this", tap through a Socratic exchange, then resume the lesson where you left it. |
-| **Map** | The syllabus ("mirrors MIT 8.04"), unit by unit with live progress. |
+| **Map** | Your knowledge maps: mapped courses + the sample "mirrors MIT 8.04" degree, unit by unit with live progress. |
+| **Map a course** | The onboarding — an **80/20 Audit** that turns a subject into a one-page overview (see below). |
 | **Constellation** | Zoom into one unit: concepts as nodes, prerequisites as edges. Tap an open node to queue it next in your feed. |
 | **You** | Depth rings (core → undergrad → graduate → frontier), retention %, and time reclaimed. No streaks, no XP. |
 
-Progress (completed lessons, answered checks, queued concepts) persists in
-`localStorage`; reset it from the You tab.
+### Map a course — the 80/20 Audit
+
+From the Map tab, "Map a new course" walks a subject through three moves before
+any studying begins, so you learn the vital few instead of everything:
+
+1. **Strategic compression — the 10% map** *(Young's rule)*: set a total time
+   budget; the first 10% is reserved for surveying the field — its landscape,
+   benchmarks, and best resources — not studying it.
+2. **The 20% selection** *(Ferriss)*: the field is deconstructed into components;
+   you keep the vital ~20% that yields 80% of results (the recommended core is
+   pre-picked), with a live split-bar against the 20% line.
+3. **The one-page metric** *(Ferriss)*: your picks compress into a single
+   glanceable cheat sheet — gated at seven lines, because if the core mechanics
+   don't fit on one page, it isn't simplified enough.
+
+Four subjects ship with full blueprints (Quantum Physics, Machine Learning,
+Copywriting, Personal Finance); any other subject gets a generic template the
+engine would later refine. The result is saved to the Map as a reusable
+one-page course overview.
+
+Progress (mapped courses, completed lessons, answered checks, queued concepts)
+persists in `localStorage`; reset it from the You tab.
 
 ## Architecture
 
@@ -46,6 +67,7 @@ src/
     lessons.ts       3 full lessons × 5 beats + quick checks
     feed.ts          today's thread (lessons · checks · refreshes)
     knowledgeMap.ts  subject → units → concept graph (constellation)
+    blueprints.ts    course blueprints for the 80/20 audit onboarding
     tutor.ts         scripted Socratic tutor exchanges per concept
     stats.ts         retention / depth-ring numbers
   state/       AppContext.tsx — single useReducer store + localStorage

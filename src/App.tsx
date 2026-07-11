@@ -6,10 +6,15 @@ import { YouScreen } from './components/YouScreen'
 import { StoryPlayer } from './components/StoryPlayer'
 import { TutorSheet } from './components/TutorSheet'
 import { ConstellationView } from './components/ConstellationView'
+import { Onboarding } from './components/Onboarding'
+import { CheatSheetView } from './components/CheatSheetView'
 import { Toast } from './components/Toast'
 
 function Shell() {
   const { state } = useApp()
+  const cheatCourse = state.cheatSheetCourseId
+    ? state.mappedCourses.find((c) => c.id === state.cheatSheetCourseId)
+    : null
 
   return (
     <div className="app-bg">
@@ -19,6 +24,8 @@ function Shell() {
         {state.tab === 'you' && <YouScreen />}
         <TabBar />
         {state.constellationUnitId && <ConstellationView unitId={state.constellationUnitId} />}
+        {cheatCourse && <CheatSheetView course={cheatCourse} />}
+        {state.onboardingOpen && <Onboarding />}
         {state.player && <StoryPlayer />}
         {state.player && state.tutorFromBeat !== null && <TutorSheet />}
         <Toast />

@@ -7,12 +7,48 @@ export function MapScreen() {
   return (
     <main className="screen">
       <header className="feed-header">
-        <div className="feed-kicker">your degree map</div>
-        <h1 className="feed-title">{subject.name}</h1>
-        <div className="card-sub" style={{ marginTop: 4 }}>
-          {subject.sourceNote}
-        </div>
+        <div className="feed-kicker">your knowledge maps</div>
+        <h1 className="feed-title">Courses</h1>
       </header>
+
+      <button className="map-new" onClick={() => dispatch({ type: 'openOnboarding' })}>
+        <span className="map-new-plus">＋</span>
+        <span>
+          <span className="map-new-title">Map a new course</span>
+          <span className="map-new-sub">run the 80/20 audit → a one-page overview</span>
+        </span>
+      </button>
+
+      {state.mappedCourses.length > 0 && (
+        <div className="mapped-list">
+          {state.mappedCourses.map((course) => {
+            const picks = course.selectedIds.length
+            return (
+              <button
+                key={course.id}
+                className="card mapped-course"
+                onClick={() => dispatch({ type: 'viewCheatSheet', courseId: course.id })}
+              >
+                <div className="row">
+                  <span className="unit-name">{course.subject}</span>
+                  <span className="tag neon">one page ▸</span>
+                </div>
+                <div className="card-sub">{course.oneLiner}</div>
+                <div className="mapped-meta">
+                  {course.totalHours}h budget · {course.mappingHours}h mapped · {picks} vital concepts
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <div className="onb-section-label" style={{ marginTop: 22 }}>
+        Sample degree · in progress
+      </div>
+      <div className="card-sub" style={{ margin: '0 0 12px' }}>
+        {subject.name} · {subject.sourceNote}
+      </div>
 
       {subject.units.map((unit) => {
         // completing lessons in the current unit nudges its live progress
@@ -68,3 +104,4 @@ export function MapScreen() {
     </main>
   )
 }
+

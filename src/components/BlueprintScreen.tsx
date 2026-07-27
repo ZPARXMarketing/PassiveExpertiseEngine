@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../state/AppContext'
 import type { BlueprintNode, NodeStatus } from '../data/types'
+import { ConceptOverview } from './ConceptOverview'
 
 function nodeFill(n: BlueprintNode): string {
   if (n.status === 'locked') return 'var(--text-faint)'
@@ -23,8 +24,14 @@ const statusLabel = (status: NodeStatus): string => {
 }
 
 export function BlueprintScreen() {
-  const { activeSubject, dispatch } = useApp()
+  const { activeSubject } = useApp()
   const [selected, setSelected] = useState<string | null>(null)
+  const detailRef = useRef<HTMLElement | null>(null)
+
+  // Reset selection when switching projects so overviews don't stick across subjects
+  useEffect(() => {
+    setSelected(null)
+  }, [activeSubject?.id])
 
   if (!activeSubject) {
     return (
@@ -41,14 +48,22 @@ export function BlueprintScreen() {
     ? Math.round(nodes.reduce((s, n) => s + n.retention, 0) / nodes.length)
     : 0
 
+  const selectNode = (id: string) => {
+    setSelected(id)
+    // On tablet the side detail is in-view; on phone the sheet covers the gap
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
+
   return (
     <main className="content-pane">
       <header className="page-header">
         <div className="feed-kicker">metalearning · curriculum aggregator</div>
         <h1 className="feed-title">Blueprint</h1>
         <p className="page-lead">
-          Skill path for <strong>{activeSubject.title}</strong>. Open the path overview, then tap
-          a concept for what you&apos;ll learn — core nodes glow on the graph.
+          Skill path for <strong>{activeSubject.title}</strong>. Read the path overview, then tap
+          any concept for what you&apos;ll learn.
         </p>
       </header>
 
@@ -80,7 +95,7 @@ export function BlueprintScreen() {
             key={node.id}
             type="button"
             className={`card path-step path-step--${node.status}${selected === node.id ? ' path-step--selected' : ''}`}
-            onClick={() => setSelected(node.id)}
+            onClick={() => selectNode(node.id)}
           >
             <div className="path-step-rail" aria-hidden>
               <span className={`path-step-dot path-step-dot--${node.status}`} />
@@ -130,9 +145,11 @@ export function BlueprintScreen() {
               <g
                 key={n.id}
                 className={`bp-node${n.is8020 ? ' core' : ''}${selected === n.id ? ' sel' : ''}`}
-                onClick={() => setSelected(n.id)}
+                onClick={() => selectNode(n.id)}
                 style={{ cursor: 'pointer' }}
               >
+                {/* Larger invisible hit target so graph taps register reliably */}
+                <circle cx={n.x} cy={n.y} r={22} fill="transparent" />
                 {n.is8020 && (
                   <circle
                     cx={n.x}
@@ -169,7 +186,7 @@ export function BlueprintScreen() {
           </div>
         </div>
 
-        <aside className="card blueprint-detail">
+        <aside className="card blueprint-detail" ref={detailRef}>
           {sel ? (
             <>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -178,7 +195,7 @@ export function BlueprintScreen() {
                   {statusLabel(sel.status)}
                 </span>
               </div>
-              <h2 className="card-title">{sel.label}</h2>
+              <h2 className="card-title">{sel.label.replace(' 🔒', '')}</h2>
               {sel.summary && <p className="card-sub">{sel.summary}</p>}
 
               <div className="feed-kicker" style={{ marginTop: 12 }}>
@@ -219,24 +236,9 @@ export function BlueprintScreen() {
               <div className="progress-track" style={{ marginTop: 8 }}>
                 <div className="progress-fill" style={{ width: `${sel.retention}%` }} />
               </div>
-              {sel.status === 'locked' ? (
-                <p className="card-sub" style={{ marginTop: 12 }}>
-                  Locked — clear prerequisites first.
-                </p>
-              ) : sel.taskId ? (
-                <button
-                  type="button"
-                  className="pill primary"
-                  style={{ marginTop: 14, width: '100%' }}
-                  onClick={() => dispatch({ type: 'openTask', taskId: sel.taskId! })}
-                >
-                  Open Terminal task
-                </button>
-              ) : (
-                <p className="card-sub" style={{ marginTop: 12 }}>
-                  No practice task wired — drill this on Dashboard.
-                </p>
-              )}
+              <p className="card-hint" style={{ marginTop: 12 }}>
+                Full overview also opens as a sheet on tap (mobile-friendly).
+              </p>
             </>
           ) : (
             <>
@@ -250,7 +252,7 @@ export function BlueprintScreen() {
                   .filter((n) => n.is8020)
                   .map((n) => (
                     <li key={n.id}>
-                      <button type="button" className="text-btn" onClick={() => setSelected(n.id)}>
+                      <button type="button" className="text-btn" onClick={() => selectNode(n.id)}>
                         {n.label} · {Math.round(n.retention)}%
                       </button>
                     </li>
@@ -260,6 +262,8 @@ export function BlueprintScreen() {
           )}
         </aside>
       </div>
+
+      {sel && <ConceptOverview node={sel} onClose={() => setSelected(null)} />}
     </main>
   )
 }

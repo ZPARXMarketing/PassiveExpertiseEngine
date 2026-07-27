@@ -14,7 +14,7 @@ import type {
   Subject,
   ViewId,
 } from '../data/types'
-import { createSeedSubjects, subjectFromGoal } from '../data/subjects'
+import { createSeedSubjects, hydrateSubjects, subjectFromGoal } from '../data/subjects'
 import type { SrsCard } from '../data/types'
 
 const PERSIST_KEY = 'pee-v2'
@@ -97,9 +97,10 @@ function load(): Persisted {
       const subjects = createSeedSubjects()
       return { subjects, activeSubjectId: subjects[0]?.id ?? null, view: 'subjects' }
     }
+    const subjects = hydrateSubjects(parsed.subjects)
     return {
-      subjects: parsed.subjects,
-      activeSubjectId: parsed.activeSubjectId ?? parsed.subjects[0]?.id ?? null,
+      subjects,
+      activeSubjectId: parsed.activeSubjectId ?? subjects[0]?.id ?? null,
       view: parsed.view ?? 'subjects',
     }
   } catch {

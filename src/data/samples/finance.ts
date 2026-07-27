@@ -12,6 +12,13 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
     title: 'Finance for small businesses',
     createdAt,
     blueprint: {
+      overview:
+        'The operator path from money in the door to “can we survive next quarter?” — unit economics first, then cash discipline, then runway.',
+      goals: [
+        'Separate revenue, COGS, and OpEx without a bookkeeper at your elbow',
+        'Read gross and net margin as operating truth, not vanity',
+        'Explain why a profitable month can still kill cash',
+      ],
       nodes: [
         {
           id: 'revenue',
@@ -23,6 +30,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           status: 'mastered',
           is8020: true,
           retention: 92,
+          summary: 'Where the money actually comes from',
+          overview:
+            'You will map every dollar of sales to a stream (packages, memberships, retail) so later margin math has clean inputs — not one noisy bank total.',
+          learnAbout: [
+            'Recurring vs one-off revenue',
+            'Why product mix changes margin',
+            'What counts as sales vs owner transfers',
+          ],
         },
         {
           id: 'cogs-opex',
@@ -35,6 +50,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           is8020: true,
           retention: 86,
           taskId: 'task-medspa-pnl',
+          summary: 'Cost of delivery vs cost of running the shop',
+          overview:
+            'Tag costs that scale with each sale (COGS) vs costs of keeping the doors open (OpEx). This split is the hinge for gross margin.',
+          learnAbout: [
+            'COGS: materials, consumables, direct product cost',
+            'OpEx: rent, wages, ads, utilities',
+            'Gray lines (e.g. medical waste) and how operators classify them',
+          ],
         },
         {
           id: 'cash-vs-profit',
@@ -47,6 +70,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           is8020: true,
           retention: 54,
           taskId: 'task-cash-forecast',
+          summary: 'Why P&L love can still mean a cash crunch',
+          overview:
+            'Accrual profit and bank balance diverge. You will forecast near-term cash so “we made money” never blinds you to payroll risk.',
+          learnAbout: [
+            'Timing: when you bill vs when cash lands',
+            'Owner draws, inventory buys, and other non-P&L drains',
+            'A simple weekly cash forecast shape',
+          ],
         },
         {
           id: 'gross-margin',
@@ -59,6 +90,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           is8020: true,
           retention: 48,
           taskId: 'task-medspa-pnl',
+          summary: 'Profit after the cost of delivering the sale',
+          overview:
+            'Gross margin = (Revenue − COGS) / Revenue. You will compute it from messy books and use it to judge product mix and pricing power.',
+          learnAbout: [
+            'The gross margin formula',
+            'What a “good” margin signals for a service business',
+            'How COGS mis-tags destroy the ratio',
+          ],
         },
         {
           id: 'net-margin',
@@ -69,6 +108,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           labelDy: 30,
           status: 'available',
           retention: 32,
+          summary: 'What is left after everything',
+          overview:
+            'Net margin folds OpEx into the story. You will connect gross → operating costs → bottom line so growth plans stay honest.',
+          learnAbout: [
+            'Net margin vs gross margin',
+            'Which levers move net without killing growth',
+            'Reading a simple P&L top to bottom',
+          ],
         },
         {
           id: 'runway',
@@ -79,6 +126,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           labelDy: 28,
           status: 'locked',
           retention: 0,
+          summary: 'Months until cash hits zero at current burn',
+          overview:
+            'Runway turns burn rate into a survival clock. Locked until cash vs profit and margins are solid — you need both to trust the number.',
+          learnAbout: [
+            'Cash runway formula',
+            'Fixed vs variable burn',
+            'When to cut, raise, or change pace',
+          ],
         },
       ],
       edges: [

@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../state/AppContext'
-import type { BlueprintNode } from '../data/types'
+import type { BlueprintNode, NodeStatus } from '../data/types'
+import { ConceptOverview } from './ConceptOverview'
 
 function nodeFill(n: BlueprintNode): string {
   if (n.status === 'locked') return 'var(--text-faint)'
@@ -9,9 +10,28 @@ function nodeFill(n: BlueprintNode): string {
   return 'var(--violet)'
 }
 
+const statusLabel = (status: NodeStatus): string => {
+  switch (status) {
+    case 'mastered':
+      return 'mastered'
+    case 'learning':
+      return 'in progress'
+    case 'available':
+      return 'ready'
+    case 'locked':
+      return 'locked'
+  }
+}
+
 export function BlueprintScreen() {
-  const { activeSubject, dispatch } = useApp()
+  const { activeSubject } = useApp()
   const [selected, setSelected] = useState<string | null>(null)
+  const detailRef = useRef<HTMLElement | null>(null)
+
+  // Reset selection when switching projects so overviews don't stick across subjects
+  useEffect(() => {
+    setSelected(null)
+  }, [activeSubject?.id])
 
   if (!activeSubject) {
     return (
@@ -21,9 +41,20 @@ export function BlueprintScreen() {
     )
   }
 
-  const { nodes, edges } = activeSubject.blueprint
+  const { nodes, edges, overview, goals } = activeSubject.blueprint
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
   const sel = nodes.find((n) => n.id === selected) ?? null
+  const avgRetention = nodes.length
+    ? Math.round(nodes.reduce((s, n) => s + n.retention, 0) / nodes.length)
+    : 0
+
+  const selectNode = (id: string) => {
+    setSelected(id)
+    // On tablet the side detail is in-view; on phone the sheet covers the gap
+    requestAnimationFrame(() => {
+      detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    })
+  }
 
   return (
     <main className="content-pane">
@@ -31,13 +62,67 @@ export function BlueprintScreen() {
         <div className="feed-kicker">metalearning · curriculum aggregator</div>
         <h1 className="feed-title">Blueprint</h1>
         <p className="page-lead">
-          80/20 dependency graph for <strong>{activeSubject.title}</strong>. Core nodes glow.
-          Tap a node to open its practice task in Terminal.
+          Skill path for <strong>{activeSubject.title}</strong>. Read the path overview, then tap
+          any concept for what you&apos;ll learn.
         </p>
       </header>
 
-      <div className="blueprint-layout">
+      <section className="card path-overview">
+        <div className="feed-kicker">path overview</div>
+        <p className="path-overview-body">
+          {overview ??
+            `Dependency graph and practice path for “${activeSubject.goal}”. Work core nodes first.`}
+        </p>
+        {goals && goals.length > 0 && (
+          <ul className="path-goals">
+            {goals.map((g) => (
+              <li key={g}>{g}</li>
+            ))}
+          </ul>
+        )}
+        <div className="path-overview-meta">
+          <div className="progress-track" style={{ flex: 1 }}>
+            <div className="progress-fill" style={{ width: `${avgRetention}%` }} />
+          </div>
+          <span className="unit-pct">{avgRetention}% avg retention</span>
+        </div>
+      </section>
+
+      <div className="path-section-label">concepts on this path</div>
+      <div className="path-steps">
+        {nodes.map((node, i) => (
+          <button
+            key={node.id}
+            type="button"
+            className={`card path-step path-step--${node.status}${selected === node.id ? ' path-step--selected' : ''}`}
+            onClick={() => selectNode(node.id)}
+          >
+            <div className="path-step-rail" aria-hidden>
+              <span className={`path-step-dot path-step-dot--${node.status}`} />
+              {i < nodes.length - 1 && <span className="path-step-line" />}
+            </div>
+            <div className="path-step-body">
+              <div className="row path-step-top">
+                <span className="path-step-index">{String(i + 1).padStart(2, '0')}</span>
+                <span className={`path-step-status path-step-status--${node.status}`}>
+                  {node.status === 'locked' ? '🔒 ' : ''}
+                  {statusLabel(node.status)}
+                  {node.is8020 ? ' · 80/20' : ''}
+                </span>
+              </div>
+              <div className="unit-name">{node.label}</div>
+              {node.summary && <div className="card-sub">{node.summary}</div>}
+              <div className="card-hint">tap → overview of what you&apos;ll learn</div>
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div className="blueprint-layout" style={{ marginTop: 18 }}>
         <div className="card blueprint-canvas">
+          <div className="feed-kicker" style={{ marginBottom: 6 }}>
+            dependency graph
+          </div>
           <svg className="blueprint-svg" viewBox="0 0 260 300" role="img" aria-label="Skill blueprint">
             {edges.map((e) => {
               const a = byId[e.from]
@@ -60,9 +145,11 @@ export function BlueprintScreen() {
               <g
                 key={n.id}
                 className={`bp-node${n.is8020 ? ' core' : ''}${selected === n.id ? ' sel' : ''}`}
-                onClick={() => setSelected(n.id)}
-                style={{ cursor: n.status === 'locked' ? 'default' : 'pointer' }}
+                onClick={() => selectNode(n.id)}
+                style={{ cursor: 'pointer' }}
               >
+                {/* Larger invisible hit target so graph taps register reliably */}
+                <circle cx={n.x} cy={n.y} r={22} fill="transparent" />
                 {n.is8020 && (
                   <circle
                     cx={n.x}
@@ -99,11 +186,41 @@ export function BlueprintScreen() {
           </div>
         </div>
 
-        <aside className="card blueprint-detail">
+        <aside className="card blueprint-detail" ref={detailRef}>
           {sel ? (
             <>
-              <div className="tag neon">{sel.is8020 ? '80/20 core' : 'node'}</div>
-              <h2 className="card-title">{sel.label}</h2>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span className="tag neon">{sel.is8020 ? '80/20 core' : 'node'}</span>
+                <span className={`path-step-status path-step-status--${sel.status}`}>
+                  {statusLabel(sel.status)}
+                </span>
+              </div>
+              <h2 className="card-title">{sel.label.replace(' 🔒', '')}</h2>
+              {sel.summary && <p className="card-sub">{sel.summary}</p>}
+
+              <div className="feed-kicker" style={{ marginTop: 12 }}>
+                what you&apos;ll learn
+              </div>
+              <p className="path-overview-body">
+                {sel.overview ??
+                  (sel.status === 'locked'
+                    ? 'Locked until prerequisites are clear. Finish the open nodes feeding this one.'
+                    : 'Practice this node in Terminal or drill it on Dashboard to lock it in.')}
+              </p>
+
+              {sel.learnAbout && sel.learnAbout.length > 0 && (
+                <>
+                  <div className="feed-kicker" style={{ marginTop: 14 }}>
+                    covered on this stop
+                  </div>
+                  <ul className="path-goals concept-learn-list">
+                    {sel.learnAbout.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
               <div className="detail-rows">
                 <div>
                   <span className="stat-label">status</span>
@@ -119,34 +236,23 @@ export function BlueprintScreen() {
               <div className="progress-track" style={{ marginTop: 8 }}>
                 <div className="progress-fill" style={{ width: `${sel.retention}%` }} />
               </div>
-              {sel.status === 'locked' ? (
-                <p className="card-sub">Locked — clear prerequisites first.</p>
-              ) : sel.taskId ? (
-                <button
-                  type="button"
-                  className="pill primary"
-                  style={{ marginTop: 14, width: '100%' }}
-                  onClick={() => dispatch({ type: 'openTask', taskId: sel.taskId! })}
-                >
-                  Open Terminal task
-                </button>
-              ) : (
-                <p className="card-sub">No practice task wired — drill this on Dashboard.</p>
-              )}
+              <p className="card-hint" style={{ marginTop: 12 }}>
+                Full overview also opens as a sheet on tap (mobile-friendly).
+              </p>
             </>
           ) : (
             <>
-              <div className="feed-kicker">select a node</div>
+              <div className="feed-kicker">select a concept</div>
               <p className="card-sub">
-                Core nodes (ringed) are the leverage points. Learning nodes are your current
-                edge.
+                Tap a path step or graph node to see what you&apos;ll learn. Core nodes (ringed) are
+                the leverage points.
               </p>
               <ul className="core-list">
                 {nodes
                   .filter((n) => n.is8020)
                   .map((n) => (
                     <li key={n.id}>
-                      <button type="button" className="text-btn" onClick={() => setSelected(n.id)}>
+                      <button type="button" className="text-btn" onClick={() => selectNode(n.id)}>
                         {n.label} · {Math.round(n.retention)}%
                       </button>
                     </li>
@@ -156,6 +262,8 @@ export function BlueprintScreen() {
           )}
         </aside>
       </div>
+
+      {sel && <ConceptOverview node={sel} onClose={() => setSelected(null)} />}
     </main>
   )
 }

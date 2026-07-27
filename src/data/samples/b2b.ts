@@ -11,6 +11,13 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
     title: 'B2B lead generation',
     createdAt: now(),
     blueprint: {
+      overview:
+        'From who you sell to how you buy meetings: define the ICP, sharpen the offer, pick channels, then prove unit economics before scaling pipeline.',
+      goals: [
+        'Write an ICP a rep can use tomorrow morning',
+        'Ship an offer wedge that names pain, outcome, and CTA',
+        'Do the CPC/CPL math that keeps paid spend honest',
+      ],
       nodes: [
         {
           id: 'icp',
@@ -22,6 +29,14 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
           status: 'mastered',
           is8020: true,
           retention: 90,
+          summary: 'Who is worth talking to — and who is not',
+          overview:
+            'Ideal customer profile: firmographics, pains, and buying triggers. Everything downstream (offer, channels, copy) inherits this filter.',
+          learnAbout: [
+            'Firmographic + pain-based ICP',
+            'Disqualifiers that save outbound time',
+            'Signals that someone is “in market”',
+          ],
         },
         {
           id: 'offer',
@@ -34,6 +49,14 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
           is8020: true,
           retention: 58,
           taskId: 'task-offer-page',
+          summary: 'The sharp promise that opens a conversation',
+          overview:
+            'A wedge is not a full product pitch — it is pain → outcome → low-friction CTA in a tight block a stranger will finish reading.',
+          learnAbout: [
+            'Pain / promise / proof structure',
+            'Cold-outbound length discipline',
+            'CTA that asks for a small next step',
+          ],
         },
         {
           id: 'channels',
@@ -45,6 +68,14 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
           status: 'available',
           retention: 45,
           taskId: 'task-channel-plan',
+          summary: 'Where meetings come from at your volume target',
+          overview:
+            'Split effort across outbound, paid, and partners against a meetings goal. Each channel needs one metric you refuse to ignore.',
+          learnAbout: [
+            'Volume math from goal → activity',
+            'LinkedIn, paid search, and partner roles',
+            'Leading vs lagging channel metrics',
+          ],
         },
         {
           id: 'cpc',
@@ -56,6 +87,14 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
           status: 'available',
           is8020: true,
           retention: 38,
+          summary: 'What a lead is allowed to cost',
+          overview:
+            'Connect ad spend to cost-per-click and cost-per-lead so “we need more leads” has a budget attached — not hope.',
+          learnAbout: [
+            'CPC and CPL definitions',
+            'Backsolving budget from target meetings',
+            'When paid is broken vs when offer is broken',
+          ],
         },
         {
           id: 'pipeline',
@@ -66,6 +105,14 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
           labelDy: 28,
           status: 'locked',
           retention: 0,
+          summary: 'Stages from first touch to closed-won',
+          overview:
+            'Named stages and conversion rates turn activity into a forecast. Locked until unit economics (CPC/CPL) are clear enough to trust volume.',
+          learnAbout: [
+            'Stage definitions that sales and marketing share',
+            'Conversion rate discipline',
+            'Where deals die — and what to fix first',
+          ],
         },
       ],
       edges: [

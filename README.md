@@ -5,7 +5,7 @@
 This repo is a **hi-fi clickable prototype** of a tablet-first skill-acquisition app.
 You create a **project** (any goal). The engine gives you:
 
-1. **Blueprint** — 80/20 dependency graph (metalearning)
+1. **Blueprint** — path overview of the skill, concept steps with “what you’ll learn,” plus 80/20 graph (metalearning)
 2. **Terminal** — timed deep-work practice (direct practice)
 3. **Synthesis** — Feynman explain-back + SRS review queue (encoding / retrieval)
 4. **Dashboard** — retention heat map + micro-drills (rapid feedback)

@@ -13,6 +13,12 @@ export function createStubSubject(goal: string): Subject {
     title,
     createdAt: new Date().toISOString(),
     blueprint: {
+      overview: `A starter skill path for “${title}”: name the outcome, learn the fundamentals, practice deliberately, then retrieve under pressure.`,
+      goals: [
+        'Name the 20% that drives 80% of the result',
+        'Ship one concrete practice artifact',
+        'Explain the core idea without notes',
+      ],
       nodes: [
         {
           id: root,
@@ -25,6 +31,13 @@ export function createStubSubject(goal: string): Subject {
           is8020: true,
           retention: 40,
           taskId: 'task-stub-practice',
+          summary: 'What “done” looks like for this project',
+          overview: `Clarify the single outcome that would make progress on “${title}” obvious — not a vague wish list.`,
+          learnAbout: [
+            'Outcome vs activity',
+            'Success criteria you can check today',
+            'Scope cuts that protect focus',
+          ],
         },
         {
           id: 'fundamentals',
@@ -36,6 +49,14 @@ export function createStubSubject(goal: string): Subject {
           status: 'available',
           retention: 25,
           taskId: 'task-stub-practice',
+          summary: 'Minimum concepts before serious practice',
+          overview:
+            'The small set of ideas and vocabulary you need so practice is deliberate instead of random thrashing.',
+          learnAbout: [
+            'Core vocabulary of the domain',
+            'Dependencies between basics',
+            'What you can safely skip at first',
+          ],
         },
         {
           id: 'practice',
@@ -48,6 +69,14 @@ export function createStubSubject(goal: string): Subject {
           is8020: true,
           retention: 20,
           taskId: 'task-stub-practice',
+          summary: 'Timed work with a clear artifact',
+          overview:
+            'Design a block with inputs, output, and a done-when test — then execute without multitasking.',
+          learnAbout: [
+            'Task design (inputs → artifact)',
+            'Time-boxing and distraction control',
+            'How to know the block actually moved the goal',
+          ],
         },
         {
           id: 'retrieval',
@@ -58,6 +87,14 @@ export function createStubSubject(goal: string): Subject {
           labelDy: 28,
           status: 'available',
           retention: 15,
+          summary: 'Prove it sticks without the notes',
+          overview:
+            'Explain and quiz yourself from memory. Retrieval is where fragile familiarity becomes usable skill.',
+          learnAbout: [
+            'Feynman-style explain-back',
+            'Spaced review of weak spots',
+            'When to re-practice vs re-read',
+          ],
         },
       ],
       edges: [

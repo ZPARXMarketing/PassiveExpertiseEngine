@@ -17,12 +17,27 @@ export interface BlueprintNode {
   /** 0–100 retention; decays over time without practice */
   retention: number
   taskId?: string
+  /** One-line blurb on the path list */
+  summary?: string
+  /** Longer overview of what you will learn at this stop */
+  overview?: string
+  /** Bullet topics covered when you open the concept */
+  learnAbout?: string[]
 }
 
 export interface BlueprintEdge {
   from: string
   to: string
   locked?: boolean
+}
+
+export interface Blueprint {
+  /** Overview of the whole skill path for this subject */
+  overview?: string
+  /** Outcomes finishing this path unlocks */
+  goals?: string[]
+  nodes: BlueprintNode[]
+  edges: BlueprintEdge[]
 }
 
 export interface CsvRow {
@@ -116,10 +131,7 @@ export interface Subject {
   goal: string
   title: string
   createdAt: string
-  blueprint: {
-    nodes: BlueprintNode[]
-    edges: BlueprintEdge[]
-  }
+  blueprint: Blueprint
   tasks: PracticeTask[]
   synthPrompts: SynthesisPrompt[]
   srs: SrsCard[]

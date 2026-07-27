@@ -1,4 +1,4 @@
-import type { Subject } from './types'
+import type { BlueprintNode, Subject } from './types'
 import { createFinanceSubject } from './samples/finance'
 import { createB2bSubject } from './samples/b2b'
 import { createStubSubject } from './samples/stub'
@@ -11,6 +11,56 @@ export function createSeedSubjects(): Subject[] {
   const b2b = createB2bSubject()
   b2b.id = 'sub-b2b-seed'
   return [finance, b2b]
+}
+
+/**
+ * Merge path/concept overview copy from a template subject onto a persisted one.
+ * Keeps progress (retention, status, metrics) while filling in curriculum text
+ * added after the user first saved.
+ */
+function enrichFromTemplate(subject: Subject, template: Subject): Subject {
+  const byId = Object.fromEntries(template.blueprint.nodes.map((n) => [n.id, n]))
+  const nodes: BlueprintNode[] = subject.blueprint.nodes.map((n) => {
+    const t = byId[n.id]
+    if (!t) return n
+    return {
+      ...n,
+      summary: n.summary ?? t.summary,
+      overview: n.overview ?? t.overview,
+      learnAbout: n.learnAbout ?? t.learnAbout,
+    }
+  })
+  return {
+    ...subject,
+    blueprint: {
+      ...subject.blueprint,
+      overview: subject.blueprint.overview ?? template.blueprint.overview,
+      goals: subject.blueprint.goals ?? template.blueprint.goals,
+      nodes,
+    },
+  }
+}
+
+/** Upgrade older localStorage subjects so path/concept overviews still show. */
+export function hydrateSubjects(subjects: Subject[]): Subject[] {
+  const financeTpl = createFinanceSubject()
+  const b2bTpl = createB2bSubject()
+  return subjects.map((s) => {
+    const ids = new Set(s.blueprint.nodes.map((n) => n.id))
+    // Finance sample signature nodes
+    if (ids.has('cash-vs-profit') && ids.has('gross-margin')) {
+      return enrichFromTemplate(s, financeTpl)
+    }
+    // B2B sample signature nodes
+    if (ids.has('icp') && ids.has('cpc')) {
+      return enrichFromTemplate(s, b2bTpl)
+    }
+    // Generic stub-style graphs
+    if (ids.has('fundamentals') && ids.has('retrieval')) {
+      return enrichFromTemplate(s, createStubSubject(s.goal || s.title))
+    }
+    return s
+  })
 }
 
 /**

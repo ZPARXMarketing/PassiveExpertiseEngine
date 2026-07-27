@@ -1,52 +1,52 @@
 import type { FeedItem } from './types'
 
 export const todaysThread: FeedItem[] = [
-  { kind: 'lesson', id: 'feed-heisenberg', lessonId: 'lesson-heisenberg' },
+  { kind: 'lesson', id: 'feed-cash-cycle', lessonId: 'lesson-cash-cycle' },
   {
     kind: 'quickCheck',
-    id: 'feed-check-super',
-    tag: 'Superposition',
+    id: 'feed-check-profit',
+    tag: 'Cash ≠ profit',
     check: {
-      question: 'Measure a qubit in an equal superposition. You get…',
-      options: ['one definite state, 50/50', 'a blur of both states'],
+      question: 'Your P&L shows a $4k profit this month. Your bank…',
+      options: ['could still be down for the month', 'must also be up $4k'],
       correctIndex: 0,
       explanation:
-        'Measurement always returns one outcome — superposition lives in the odds, never in the reading.',
+        'Profit is accrual storytelling. Cash moves with collections, inventory buys, loan principal, and owner draws — none of which equal “profit.”',
     },
   },
   {
     kind: 'refresh',
-    id: 'feed-refresh-psi',
+    id: 'feed-refresh-cogs',
     tag: 'refresh · 3d ago',
     daysAgo: 3,
-    title: 'Wave function ψ — what it encodes',
-    prompt: 'Finish the thought: ψ assigns every possible outcome an…',
+    title: 'COGS — what counts',
+    prompt: 'Finish the thought: COGS only includes costs that…',
     reveal:
-      'amplitude — a complex weight whose square gives the probability of that outcome.',
+      'are directly tied to producing or acquiring what you sold — materials, product cost, shipping out, job-specific labor — not rent or brand ads.',
     durationSec: 30,
   },
-  { kind: 'lesson', id: 'feed-collapse', lessonId: 'lesson-collapse' },
+  { kind: 'lesson', id: 'feed-cash-vs-profit', lessonId: 'lesson-cash-vs-profit' },
   {
     kind: 'quickCheck',
-    id: 'feed-check-heisenberg',
-    tag: 'Heisenberg',
+    id: 'feed-check-cycle',
+    tag: 'Cash cycle',
     check: {
-      question: 'The uncertainty principle is ultimately a limit of…',
-      options: ['waves themselves', 'our best instruments'],
+      question: 'Selling more on net-60 while stocking more inventory typically…',
+      options: ['lengthens the cash cycle', 'shortens the cash cycle'],
       correctIndex: 0,
       explanation:
-        'Δx·Δp ≥ ħ/2 follows from wave math alone — no instrument, however perfect, can beat it.',
+        'More inventory days + longer receivable days = cash stuck longer. Growth without tighter terms can starve a healthy-looking shop.',
     },
   },
   {
     kind: 'refresh',
-    id: 'feed-refresh-slit',
+    id: 'feed-refresh-runway',
     tag: 'refresh · 6d ago',
     daysAgo: 6,
-    title: 'Double-slit — 30s recap',
-    prompt: 'One electron at a time still makes stripes because…',
+    title: 'Runway — 30s recap',
+    prompt: 'Runway in months is roughly cash on hand divided by…',
     reveal:
-      'each electron traverses both slits in superposition and interferes with itself.',
+      'monthly net burn (cash out − cash in). If burn is $8k and cash is $40k, you have about 5 months — unless collections slip.',
     durationSec: 30,
   },
 ]

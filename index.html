@@ -3,8 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/manifest.webmanifest" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#07080d" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Expertise" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta
       name="description"
       content="Passive Expertise Engine — university-grade knowledge, absorbed in the moments you're already on your phone."
@@ -16,6 +22,39 @@
       rel="stylesheet"
     />
     <title>Passive Expertise Engine</title>
+    <style>
+      /* Instant splash while JS boots — matches app bg + neon mark */
+      html,
+      body {
+        margin: 0;
+        background: #07080d;
+        color: #eef1f8;
+      }
+      #root:empty {
+        min-height: 100dvh;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(60% 40% at 20% 0%, rgba(42, 255, 163, 0.07), transparent 70%),
+          radial-gradient(50% 35% at 85% 100%, rgba(76, 141, 255, 0.06), transparent 70%),
+          #07080d;
+      }
+      #root:empty::before {
+        content: '';
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        border: 3px solid rgba(42, 255, 163, 0.35);
+        border-top-color: #2affa3;
+        animation: pee-splash-spin 0.9s linear infinite;
+        box-shadow: 0 0 28px rgba(42, 255, 163, 0.2);
+      }
+      @keyframes pee-splash-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>

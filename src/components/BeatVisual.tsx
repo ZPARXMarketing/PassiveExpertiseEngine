@@ -9,6 +9,7 @@ function Wave() {
   return (
     <>
       <path
+        className="v-draw"
         d="M10 85 Q 32 30, 55 85 T 100 85 T 145 85 T 190 85"
         fill="none"
         stroke={NEON}
@@ -16,6 +17,8 @@ function Wave() {
         strokeLinecap="round"
       />
       <path
+        className="v-draw"
+        style={{ animationDelay: '0.12s' }}
         d="M10 100 Q 40 70, 70 100 T 130 100 T 190 100"
         fill="none"
         stroke={CYAN}
@@ -24,6 +27,8 @@ function Wave() {
         opacity="0.55"
       />
       <path d="M10 120 H 190" stroke={FAINT} strokeWidth="1.5" strokeDasharray="3 6" />
+      <circle className="v-pulse" cx="55" cy="85" r="4" fill={NEON} />
+      <circle className="v-pulse" cx="145" cy="85" r="4" fill={CYAN} opacity="0.8" />
     </>
   )
 }
@@ -31,8 +36,18 @@ function Wave() {
 function Orbit() {
   return (
     <>
-      <ellipse cx="100" cy="100" rx="80" ry="30" fill="none" stroke={FAINT} strokeWidth="1.5" />
       <ellipse
+        className="v-spin"
+        cx="100"
+        cy="100"
+        rx="80"
+        ry="30"
+        fill="none"
+        stroke={FAINT}
+        strokeWidth="1.5"
+      />
+      <ellipse
+        className="v-spin-rev"
         cx="100"
         cy="100"
         rx="80"
@@ -44,6 +59,7 @@ function Orbit() {
         transform="rotate(60 100 100)"
       />
       <ellipse
+        className="v-spin"
         cx="100"
         cy="100"
         rx="80"
@@ -54,8 +70,10 @@ function Orbit() {
         opacity="0.6"
         transform="rotate(-60 100 100)"
       />
-      <circle cx="100" cy="100" r="12" fill={NEON} />
-      <circle cx="171" cy="82" r="5" fill={CYAN} />
+      <circle className="v-pulse" cx="100" cy="100" r="12" fill={NEON} />
+      <g className="v-orbit-dot">
+        <circle cx="171" cy="100" r="5" fill={CYAN} />
+      </g>
     </>
   )
 }
@@ -69,6 +87,8 @@ function Slit() {
       {[0, 1, 2, 3, 4].map((i) => (
         <circle
           key={i}
+          className="v-fade"
+          style={{ animationDelay: `${i * 0.15}s` }}
           cx="64"
           cy="100"
           r={18 + i * 22}
@@ -83,7 +103,18 @@ function Slit() {
         <rect x="64" y="0" width="140" height="200" />
       </clipPath>
       {[38, 66, 94, 122, 150].map((y, i) => (
-        <rect key={y} x="176" y={y} width="7" height="14" rx="2" fill={NEON} opacity={i === 2 ? 1 : 0.45} />
+        <rect
+          key={y}
+          className="v-rise"
+          style={{ animationDelay: `${i * 0.07}s` }}
+          x="176"
+          y={y}
+          width="7"
+          height="14"
+          rx="2"
+          fill={NEON}
+          opacity={i === 2 ? 1 : 0.45}
+        />
       ))}
     </>
   )
@@ -92,12 +123,35 @@ function Slit() {
 function Dice() {
   return (
     <>
-      <rect x="45" y="45" width="110" height="110" rx="20" fill="none" stroke={NEON} strokeWidth="2.5" />
-      <circle cx="78" cy="78" r="9" fill={NEON} />
-      <circle cx="122" cy="122" r="9" fill={NEON} />
-      <circle cx="122" cy="78" r="9" fill={CYAN} opacity="0.5" />
-      <circle cx="78" cy="122" r="9" fill={CYAN} opacity="0.5" />
-      <circle cx="100" cy="100" r="9" fill={VIOLET} opacity="0.7" />
+      <rect
+        className="v-draw"
+        x="45"
+        y="45"
+        width="110"
+        height="110"
+        rx="20"
+        fill="none"
+        stroke={NEON}
+        strokeWidth="2.5"
+      />
+      {[
+        [78, 78, NEON, 0],
+        [122, 122, NEON, 0.08],
+        [122, 78, CYAN, 0.16],
+        [78, 122, CYAN, 0.24],
+        [100, 100, VIOLET, 0.32],
+      ].map(([cx, cy, fill, delay], i) => (
+        <circle
+          key={i}
+          className="v-rise"
+          style={{ animationDelay: `${delay}s` }}
+          cx={cx as number}
+          cy={cy as number}
+          r="9"
+          fill={fill as string}
+          opacity={i >= 2 ? (i === 4 ? 0.7 : 0.5) : 1}
+        />
+      ))}
     </>
   )
 }
@@ -106,17 +160,19 @@ function Camera() {
   return (
     <>
       <circle cx="100" cy="100" r="62" fill="none" stroke={FAINT} strokeWidth="2" />
-      {[0, 60, 120, 180, 240, 300].map((a) => (
-        <path
-          key={a}
-          d="M100 44 A 56 56 0 0 1 148 72 L 100 100 Z"
-          fill={a % 120 ? 'rgba(76,201,255,0.18)' : 'rgba(42,255,163,0.22)'}
-          stroke={a % 120 ? CYAN : NEON}
-          strokeWidth="1"
-          transform={`rotate(${a} 100 100)`}
-        />
-      ))}
-      <circle cx="100" cy="100" r="16" fill="var(--bg)" stroke={NEON} strokeWidth="2" />
+      <g className="v-spin">
+        {[0, 60, 120, 180, 240, 300].map((a) => (
+          <path
+            key={a}
+            d="M100 44 A 56 56 0 0 1 148 72 L 100 100 Z"
+            fill={a % 120 ? 'rgba(76,201,255,0.18)' : 'rgba(42,255,163,0.22)'}
+            stroke={a % 120 ? CYAN : NEON}
+            strokeWidth="1"
+            transform={`rotate(${a} 100 100)`}
+          />
+        ))}
+      </g>
+      <circle className="v-pulse" cx="100" cy="100" r="16" fill="var(--bg)" stroke={NEON} strokeWidth="2" />
     </>
   )
 }
@@ -124,8 +180,18 @@ function Camera() {
 function Rings() {
   return (
     <>
-      <circle cx="100" cy="100" r="72" fill="none" stroke={FAINT} strokeWidth="8" strokeDasharray="3 7" />
       <circle
+        className="v-spin-rev"
+        cx="100"
+        cy="100"
+        r="72"
+        fill="none"
+        stroke={FAINT}
+        strokeWidth="8"
+        strokeDasharray="3 7"
+      />
+      <circle
+        className="v-spin"
         cx="100"
         cy="100"
         r="52"
@@ -138,6 +204,7 @@ function Rings() {
         transform="rotate(-90 100 100)"
       />
       <circle
+        className="v-spin-rev"
         cx="100"
         cy="100"
         r="32"
@@ -148,7 +215,7 @@ function Rings() {
         strokeLinecap="round"
         transform="rotate(-90 100 100)"
       />
-      <circle cx="100" cy="100" r="12" fill={NEON} />
+      <circle className="v-pulse" cx="100" cy="100" r="12" fill={NEON} />
     </>
   )
 }

@@ -6,10 +6,22 @@ import { YouScreen } from './components/YouScreen'
 import { StoryPlayer } from './components/StoryPlayer'
 import { TutorSheet } from './components/TutorSheet'
 import { ConstellationView } from './components/ConstellationView'
+import { OnboardingScreen } from './components/OnboardingScreen'
 import { Toast } from './components/Toast'
 
 function Shell() {
   const { state } = useApp()
+
+  if (!state.onboarded) {
+    return (
+      <div className="app-bg">
+        <div className="phone">
+          <OnboardingScreen />
+          <Toast />
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="app-bg">

@@ -10,20 +10,26 @@
       with the real NeonFlux colors/fonts and the whole app follows.
       Easiest fix: start a session with `NeonFlux-design` as a source, or
       make it readable from this org.
-- [ ] Real lesson visuals/animations in the story player (current build uses
-      generative SVG motifs per beat).
-- [ ] App icon + splash / PWA manifest for install-to-home-screen.
+- [x] Real lesson visuals/animations in the story player (generative SVG
+      motifs per beat now animate — draw-in, pulse, orbit, spin).
+- [x] App icon + splash / PWA manifest for install-to-home-screen
+      (`public/manifest.webmanifest`, PNG icons, apple-touch meta, boot splash
+      in `index.html`).
 
 ## Product
-- [ ] Onboarding flow: pick a subject → engine builds the syllabus/knowledge map.
+- [x] Onboarding flow: pick a subject → engine builds the syllabus/knowledge
+      map (`OnboardingScreen` + `src/data/subjects.ts`; Finance for Small
+      Businesses is the live test subject; re-run from You → "change subject /
+      re-run onboarding").
 - [ ] Wire lessons + tutor to the Claude API (content is hand-written mock data
-      for Quantum Physics right now — see `src/data/`).
+      for Finance for Small Businesses right now — see `src/data/`).
 - [ ] Real spaced-repetition scheduler (forgetting-curve timing); reviews are
       currently pre-authored feed items.
 - [ ] Idle-window prediction + notification/delivery layer (the core "finds you
       when you're already on your phone" mechanic).
 - [ ] Real assessment behind the retention/depth numbers on the You tab.
-- [ ] More subjects than Quantum Physics.
+- [ ] More subjects than Finance for Small Businesses (catalog lists 4; only
+      SMB finance has content — others toast "soon" from onboarding).
 
 ## Engineering
 - [ ] Netlify: connect the repo to a Netlify site (a `netlify.toml` with build

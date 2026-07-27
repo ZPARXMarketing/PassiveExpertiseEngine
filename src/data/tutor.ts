@@ -2,38 +2,41 @@ import type { TutorScript } from './types'
 
 const scripts: TutorScript[] = [
   {
-    conceptId: 'uncertainty',
+    conceptId: 'cash-cycle',
     opening: [
       {
         from: 'tutor',
-        text: 'Think of a camera: freeze the motion with a fast shutter and you lose any sense of where it\'s headed. Blur it with a slow shutter and you see the motion, but not the spot.',
+        text: 'Imagine a bakery: flour bought Monday, bread sold Wednesday, customer pays Friday. The business did work for almost a week before cash came home.',
       },
-      { from: 'tutor', text: 'A quantum particle is like that — except the trade-off isn\'t in the camera. It\'s in the particle itself.' },
+      {
+        from: 'tutor',
+        text: 'That lag — buy → sell → collect — is the cash cycle. Stretch it and you need more capital just to stand still.',
+      },
     ],
     branches: [
       {
-        id: 'math',
-        label: 'give me the math',
+        id: 'formula',
+        label: 'give me the formula',
         turns: [
-          { from: 'you', text: 'give me the math' },
+          { from: 'you', text: 'give me the formula' },
           {
             from: 'tutor',
-            text: 'Position and momentum are Fourier partners: ψ(x) and its transform φ(p) describe the same state. A narrow ψ(x) forces a wide φ(p).',
+            text: 'Cash cycle days ≈ inventory days + receivable days − payable days. Inventory and AR are cash trapped; AP is cash you still hold.',
           },
           {
             from: 'tutor',
-            text: 'The widths obey Δx · Δp ≥ ħ/2 — the same inequality that limits any wave, sound included. Quantum just makes matter wavy.',
+            text: 'Shorter cycle = less cash needed to support the same sales. Longer cycle = you’re the bank for your customers and your stockroom.',
           },
         ],
       },
       {
-        id: 'tools',
-        label: "so it's not the tools being bad?",
+        id: 'growth',
+        label: 'why does growth hurt cash?',
         turns: [
-          { from: 'you', text: "so it's not the tools being bad?" },
+          { from: 'you', text: 'why does growth hurt cash?' },
           {
             from: 'tutor',
-            text: 'Right — it\'s baked into reality itself. Even a "perfect" instrument reads a wave packet, and a wave packet simply doesn\'t possess a sharp position and a sharp momentum at once.',
+            text: 'Because every new sale often means more inventory upfront and another invoice waiting. Revenue climbs first; cash climbs later — if terms stay soft.',
           },
         ],
       },
@@ -44,43 +47,93 @@ const scripts: TutorScript[] = [
           { from: 'you', text: 'another example?' },
           {
             from: 'tutor',
-            text: 'A guitar string: pluck a short "click" and it has no clear pitch. Let it ring and the pitch is sharp but spread over time. Time↔frequency is the same trade-off as position↔momentum.',
+            text: 'A contractor: materials on a card this week, job finished next week, client pays in 45 days. The P&L may look fine while the card balance and payroll still need real cash now.',
           },
         ],
       },
     ],
   },
   {
-    conceptId: 'collapse',
+    conceptId: 'cash-vs-profit',
     opening: [
       {
         from: 'tutor',
-        text: 'Picture a spinning coin. While it spins, "heads or tails?" has no answer — the spin IS the state. Slapping it flat forces an answer.',
+        text: 'Think of profit as a movie review of last month’s model. Cash is whether the car has gas this morning.',
       },
-      { from: 'tutor', text: 'Measurement is the slap. ψ was the spin; the outcome is the face you see. And the coin stays slapped.' },
+      {
+        from: 'tutor',
+        text: 'They’re related — but they answer different questions. Confusing them is how “I was profitable” becomes “payroll bounced.”',
+      },
     ],
     branches: [
       {
-        id: 'random',
-        label: 'so the outcome is pure luck?',
+        id: 'broke',
+        label: 'how can profit be up and cash be down?',
         turns: [
-          { from: 'you', text: 'so the outcome is pure luck?' },
+          { from: 'you', text: 'how can profit be up and cash be down?' },
           {
             from: 'tutor',
-            text: 'Loaded luck. ψ fixes the odds exactly — probability = amplitude². What stays random is only which of the weighted options fires.',
+            text: 'You sold on credit (AR up), restocked inventory, paid down loan principal, or took an owner draw. Profit can ignore those cash exits; the bank cannot.',
           },
         ],
       },
       {
-        id: 'why',
-        label: 'why does looking change anything?',
+        id: 'flush',
+        label: 'what about a loss with lots of cash?',
         turns: [
-          { from: 'you', text: 'why does looking change anything?' },
+          { from: 'you', text: 'what about a loss with lots of cash?' },
           {
             from: 'tutor',
-            text: '"Looking" means coupling the particle to something big — a detector, the air, you. Information leaks out, and the neat superposition can\'t survive the leak.',
+            text: 'A loan, a prepay, or selling off equipment can fill the account while the P&L still shows a loss. That cash often has a job already assigned — repayment or delivery.',
           },
-          { from: 'tutor', text: 'That leak has a name — decoherence. It\'s the next node on your map.' },
+        ],
+      },
+      {
+        id: 'habit',
+        label: 'what should I check weekly?',
+        turns: [
+          { from: 'you', text: 'what should I check weekly?' },
+          {
+            from: 'tutor',
+            text: 'Three numbers: cash on hand, next 4–8 weeks of expected cash in/out, and whether AR is aging. Add gross margin monthly so the model doesn’t silently rot.',
+          },
+        ],
+      },
+    ],
+  },
+  {
+    conceptId: 'gross-margin',
+    opening: [
+      {
+        from: 'tutor',
+        text: 'Picture every sale as a jar: money in, cost of the thing out. What’s left in the jar is gross profit — the only money that can pay rent, ads, and you.',
+      },
+      {
+        from: 'tutor',
+        text: 'Gross margin is that leftover as a percent of the sale. Thin jars mean overhead has nowhere to stand.',
+      },
+    ],
+    branches: [
+      {
+        id: 'cogs',
+        label: 'what counts as COGS?',
+        turns: [
+          { from: 'you', text: 'what counts as COGS?' },
+          {
+            from: 'tutor',
+            text: 'Direct costs of the unit sold: materials, wholesale product cost, packaging, shipping to the customer, labor that only exists because of that job. Not the office Wi‑Fi.',
+          },
+        ],
+      },
+      {
+        id: 'discount',
+        label: 'why are discounts so dangerous?',
+        turns: [
+          { from: 'you', text: 'why are discounts so dangerous?' },
+          {
+            from: 'tutor',
+            text: 'Discounts hit revenue first, while COGS often stays put. On a 40% margin, a 20% off coupon can erase half the contribution — you’re working for exposure, not oxygen.',
+          },
         ],
       },
       {
@@ -90,44 +143,7 @@ const scripts: TutorScript[] = [
           { from: 'you', text: 'give me the math' },
           {
             from: 'tutor',
-            text: 'State |ψ⟩ = Σ cᵢ|i⟩. Measuring the observable with eigenstates |i⟩ returns outcome i with probability |cᵢ|², and the state updates to |i⟩. That update is the collapse.',
-          },
-        ],
-      },
-    ],
-  },
-  {
-    conceptId: 'interference',
-    opening: [
-      {
-        from: 'tutor',
-        text: 'Drop two pebbles in a pond: where crests meet, the water leaps; where crest meets trough, it goes flat.',
-      },
-      {
-        from: 'tutor',
-        text: 'Quantum amplitudes do the same — except the "two pebbles" can be two histories of a single particle.',
-      },
-    ],
-    branches: [
-      {
-        id: 'one',
-        label: 'how can ONE electron interfere?',
-        turns: [
-          { from: 'you', text: 'how can ONE electron interfere?' },
-          {
-            from: 'tutor',
-            text: 'Because until it\'s measured, the electron isn\'t a dot taking one path — it\'s a wave of amplitude taking every path. The two slit-histories overlap and add before any dot appears.',
-          },
-        ],
-      },
-      {
-        id: 'math',
-        label: 'give me the math',
-        turns: [
-          { from: 'you', text: 'give me the math' },
-          {
-            from: 'tutor',
-            text: 'P = |A₁ + A₂|² = |A₁|² + |A₂|² + 2·Re(A₁*A₂). That last cross-term is interference — it can be negative, deleting probability where paths disagree.',
+            text: 'Gross profit = Sales − COGS. Gross margin = Gross profit ÷ Sales. Contribution after variable costs is what fights fixed overhead; if that’s thin, volume only digs faster.',
           },
         ],
       },
@@ -138,7 +154,10 @@ const scripts: TutorScript[] = [
 const fallback: TutorScript = {
   conceptId: '*',
   opening: [
-    { from: 'tutor', text: "Let's slow down. Tell me which part felt slippery and we'll rebuild it from something you already know." },
+    {
+      from: 'tutor',
+      text: "Let's slow down. Tell me which part felt slippery and we'll rebuild it from a shop-floor example you already know.",
+    },
   ],
   branches: [
     {
@@ -146,7 +165,10 @@ const fallback: TutorScript = {
       label: 'explain it simpler',
       turns: [
         { from: 'you', text: 'explain it simpler' },
-        { from: 'tutor', text: 'Strip the jargon: a quantum state is just a list of "maybes", each with a weight. Everything else is rules for how the weights evolve and combine.' },
+        {
+          from: 'tutor',
+          text: 'Strip the jargon: profit is “did the model work on paper?” Cash is “can we pay people on Friday?” Margin is “how much of each sale is left after the direct cost of that sale?”',
+        },
       ],
     },
   ],

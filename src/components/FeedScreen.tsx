@@ -16,7 +16,7 @@ export function FeedScreen() {
   return (
     <main className="screen">
       <header className="feed-header">
-        <div className="feed-kicker">Quantum Physics · unit 2</div>
+        <div className="feed-kicker">Small-business finance · unit 2</div>
         <h1 className="feed-title">
           Today's thread <span>· {totalThreadMinutes} min</span>
         </h1>

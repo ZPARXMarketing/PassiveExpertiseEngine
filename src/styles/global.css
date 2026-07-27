@@ -861,6 +861,297 @@ button {
   text-underline-offset: 3px;
 }
 
+/* ---------- onboarding ---------- */
+
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100dvh;
+  padding-bottom: calc(28px + env(safe-area-inset-bottom));
+}
+
+.onb-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: screen-in 0.32s var(--ease);
+}
+
+.onb-title span {
+  color: var(--neon);
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+.onb-lead {
+  margin: 0;
+  font-size: 14.5px;
+  color: var(--text-dim);
+  max-width: 34em;
+}
+
+.onb-mark {
+  width: 72px;
+  height: 72px;
+  position: relative;
+  margin-bottom: 8px;
+}
+
+.onb-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: var(--neon);
+  border-right-color: rgba(42, 255, 163, 0.35);
+  box-shadow: 0 0 22px var(--neon-glow);
+  animation: onb-spin 2.4s linear infinite;
+}
+
+.onb-core {
+  position: absolute;
+  inset: 28%;
+  border-radius: 50%;
+  background: var(--neon);
+  box-shadow: 0 0 18px var(--neon-glow);
+}
+
+@keyframes onb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.onb-cta {
+  margin-top: 10px;
+  width: 100%;
+  padding: 14px;
+  font-size: 15px;
+}
+
+.onb-footnote {
+  margin: 4px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.onb-subjects {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.onb-subject {
+  width: 100%;
+  text-align: left;
+  transition:
+    transform 0.12s var(--ease),
+    box-shadow 0.2s,
+    border-color 0.2s;
+}
+
+.onb-subject:active {
+  transform: scale(0.985);
+}
+
+.onb-subject.accent-neon:not(.soon):hover,
+.onb-subject.accent-neon:not(.soon):focus-visible {
+  box-shadow: var(--glow-card), var(--shadow-card);
+  border-color: transparent;
+}
+
+.onb-subject.accent-cyan:not(.soon) {
+  border-color: rgba(76, 201, 255, 0.25);
+}
+
+.onb-subject.accent-violet:not(.soon) {
+  border-color: rgba(167, 139, 255, 0.25);
+}
+
+.onb-subject.soon {
+  opacity: 0.72;
+}
+
+.onb-subject-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.onb-build-visual {
+  height: 88px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 8px 0 4px;
+}
+
+.onb-nodes {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.onb-node {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  position: relative;
+  transition:
+    background 0.35s var(--ease),
+    box-shadow 0.35s var(--ease),
+    border-color 0.35s;
+}
+
+.onb-node::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  width: 14px;
+  height: 1px;
+  background: var(--border-strong);
+  transform: translateY(-50%);
+}
+
+.onb-node:last-child::after {
+  display: none;
+}
+
+.onb-node.lit {
+  background: var(--neon);
+  border-color: var(--neon);
+  box-shadow: 0 0 14px var(--neon-glow);
+}
+
+.onb-node.lit::after {
+  background: rgba(42, 255, 163, 0.45);
+}
+
+.onb-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onb-steps li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13.5px;
+  color: var(--text-faint);
+  transition: color 0.25s;
+}
+
+.onb-steps li.active {
+  color: var(--text);
+}
+
+.onb-steps li.done {
+  color: var(--neon);
+}
+
+.onb-step-mark {
+  font-family: var(--font-mono);
+  width: 1.1em;
+  flex: none;
+}
+
+.onb-ready-card {
+  margin: 4px 0 8px;
+  box-shadow: var(--glow-card), var(--shadow-card);
+  border-color: transparent;
+}
+
+/* ---------- beat visuals (animated) ---------- */
+
+.beat-visual .v-draw {
+  stroke-dasharray: 280;
+  stroke-dashoffset: 280;
+  animation: v-draw 0.9s var(--ease) forwards;
+}
+
+.beat-visual .v-pulse {
+  transform-origin: center;
+  animation: v-pulse 2.4s var(--ease) infinite;
+}
+
+.beat-visual .v-spin {
+  transform-origin: 100px 100px;
+  animation: v-spin 12s linear infinite;
+}
+
+.beat-visual .v-spin-rev {
+  transform-origin: 100px 100px;
+  animation: v-spin 16s linear infinite reverse;
+}
+
+.beat-visual .v-orbit-dot {
+  transform-origin: 100px 100px;
+  animation: v-spin 4.5s linear infinite;
+}
+
+.beat-visual .v-fade {
+  animation: v-fade 2s var(--ease) infinite alternate;
+}
+
+.beat-visual .v-rise {
+  animation: v-rise 0.55s var(--ease) both;
+}
+
+@keyframes v-draw {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes v-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1.06);
+  }
+}
+
+@keyframes v-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes v-fade {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes v-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ---------- toast ---------- */
 
 .toast {

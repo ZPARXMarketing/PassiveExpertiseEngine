@@ -43,7 +43,10 @@ export function MapScreen() {
             onClick={() =>
               current
                 ? dispatch({ type: 'openConstellation', unitId: unit.id })
-                : dispatch({ type: 'showToast', 'message': 'Constellation coming for this unit — unit 2 is live' })
+                : dispatch({
+                    type: 'showToast',
+                    message: 'Constellation coming for this unit — unit 2 (cash flow) is live',
+                  })
             }
           >
             <div className="row">

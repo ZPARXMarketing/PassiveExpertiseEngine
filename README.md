@@ -9,7 +9,7 @@ with spaced repetition woven invisibly into the stream so it sticks.
 
 This repo is the **hi-fi clickable prototype** of the mobile app (wireframe set
 "2a" from the design handoff), built as a mobile-first React SPA with hand-written
-sample content for one subject: **Quantum Physics**.
+sample content for one subject: **Finance for Small Businesses**.
 
 ## Run it
 
@@ -31,7 +31,7 @@ Three tabs, three overlays:
 | **Feed** (home) | "Today's thread" — new-lesson cards, inline quick checks, and 30-second refreshes you consume in place. The thing you reach for in an idle window. |
 | **Story player** | Only *new* concepts get it: 5 cinematic beats, tap right/left to advance, beat 6 is the quick check that closes the lesson. |
 | **Tutor** | A lifeline, not a destination — summon it from any beat with "I don't get this", tap through a Socratic exchange, then resume the lesson where you left it. |
-| **Map** | The syllabus ("mirrors MIT 8.04"), unit by unit with live progress. |
+| **Map** | The syllabus ("operator track · SBA-shaped"), unit by unit with live progress. |
 | **Constellation** | Zoom into one unit: concepts as nodes, prerequisites as edges. Tap an open node to queue it next in your feed. |
 | **You** | Depth rings (core → undergrad → graduate → frontier), retention %, and time reclaimed. No streaks, no XP. |
 

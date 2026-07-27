@@ -62,6 +62,9 @@ export function YouScreen() {
       <button className="reset-btn" onClick={() => dispatch({ type: 'resetProgress' })}>
         reset demo progress
       </button>
+      <button className="reset-btn" onClick={() => dispatch({ type: 'restartOnboarding' })}>
+        change subject / re-run onboarding
+      </button>
     </main>
   )
 }

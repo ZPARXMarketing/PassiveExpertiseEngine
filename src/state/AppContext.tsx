@@ -2,7 +2,9 @@ import { createContext, useContext, useEffect, useMemo, useReducer } from 'react
 import type { Dispatch, ReactNode } from 'react'
 import type { FeedItem } from '../data/types'
 import { todaysThread } from '../data/feed'
-import { lessonById } from '../data/lessons'
+import { lessonById, lessons } from '../data/lessons'
+
+const VALID_LESSON_IDS = new Set(lessons.map((l) => l.id))
 
 export type Tab = 'feed' | 'map' | 'you'
 
@@ -22,6 +24,9 @@ export interface AppState {
   revealedRefreshes: string[]
   queuedLessonIds: string[] // queued from the constellation, surfaced atop the feed
   toast: string | null
+  /** False until onboarding finishes (or user skips via legacy progress). */
+  onboarded: boolean
+  subjectId: string
 }
 
 export type Action =
@@ -39,13 +44,15 @@ export type Action =
   | { type: 'queueLesson'; lessonId: string }
   | { type: 'showToast'; message: string }
   | { type: 'clearToast' }
+  | { type: 'completeOnboarding'; subjectId: string }
+  | { type: 'restartOnboarding' }
   | { type: 'resetProgress' }
 
 const PERSIST_KEY = 'pee-progress-v1'
 
 type Persisted = Pick<
   AppState,
-  'completedLessons' | 'checkAnswers' | 'revealedRefreshes' | 'queuedLessonIds'
+  'completedLessons' | 'checkAnswers' | 'revealedRefreshes' | 'queuedLessonIds' | 'onboarded' | 'subjectId'
 >
 
 const emptyProgress: Persisted = {
@@ -53,13 +60,32 @@ const emptyProgress: Persisted = {
   checkAnswers: {},
   revealedRefreshes: [],
   queuedLessonIds: [],
+  onboarded: false,
+  subjectId: 'smb-finance',
 }
 
 const loadProgress = (): Persisted => {
   try {
     const raw = localStorage.getItem(PERSIST_KEY)
     if (!raw) return emptyProgress
-    return { ...emptyProgress, ...(JSON.parse(raw) as Partial<Persisted>) }
+    const parsed = JSON.parse(raw) as Partial<Persisted>
+    // Existing demos that already have progress skip onboarding once.
+    const hasProgress =
+      (parsed.completedLessons?.length ?? 0) > 0 ||
+      Object.keys(parsed.checkAnswers ?? {}).length > 0 ||
+      (parsed.revealedRefreshes?.length ?? 0) > 0 ||
+      (parsed.queuedLessonIds?.length ?? 0) > 0
+    // Migrate pre-finance prototype subject id + drop stale lesson ids.
+    const subjectId =
+      !parsed.subjectId || parsed.subjectId === 'quantum' ? 'smb-finance' : parsed.subjectId
+    return {
+      ...emptyProgress,
+      ...parsed,
+      onboarded: parsed.onboarded ?? hasProgress,
+      subjectId,
+      completedLessons: (parsed.completedLessons ?? []).filter((id) => VALID_LESSON_IDS.has(id)),
+      queuedLessonIds: (parsed.queuedLessonIds ?? []).filter((id) => VALID_LESSON_IDS.has(id)),
+    }
   } catch {
     return emptyProgress
   }
@@ -131,8 +157,36 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, toast: action.message }
     case 'clearToast':
       return { ...state, toast: null }
+    case 'completeOnboarding':
+      return {
+        ...state,
+        onboarded: true,
+        subjectId: action.subjectId,
+        tab: 'feed',
+        toast: 'Your map is ready — first thread below',
+      }
+    case 'restartOnboarding':
+      return {
+        ...state,
+        ...emptyProgress,
+        onboarded: false,
+        player: null,
+        tutorFromBeat: null,
+        constellationUnitId: null,
+        toast: null,
+      }
     case 'resetProgress':
-      return { ...initialState, ...emptyProgress, tab: 'you', toast: 'Progress reset' }
+      return {
+        ...state,
+        ...emptyProgress,
+        onboarded: true,
+        subjectId: state.subjectId,
+        tab: 'you',
+        player: null,
+        tutorFromBeat: null,
+        constellationUnitId: null,
+        toast: 'Progress reset',
+      }
     default:
       return state
   }
@@ -150,10 +204,24 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(reducer, initialState)
 
   useEffect(() => {
-    const { completedLessons, checkAnswers, revealedRefreshes, queuedLessonIds } = state
+    const {
+      completedLessons,
+      checkAnswers,
+      revealedRefreshes,
+      queuedLessonIds,
+      onboarded,
+      subjectId,
+    } = state
     localStorage.setItem(
       PERSIST_KEY,
-      JSON.stringify({ completedLessons, checkAnswers, revealedRefreshes, queuedLessonIds }),
+      JSON.stringify({
+        completedLessons,
+        checkAnswers,
+        revealedRefreshes,
+        queuedLessonIds,
+        onboarded,
+        subjectId,
+      }),
     )
   }, [state])
 

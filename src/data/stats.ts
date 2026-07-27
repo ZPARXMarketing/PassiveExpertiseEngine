@@ -1,9 +1,9 @@
 export const baseStats = {
-  retentionPct: 91,
-  conceptsHeld: 128,
-  timeReclaimed: '2h 41m',
-  idleMoments: 34,
-  weekBars: [40, 70, 55, 30, 80, 65, 45], // % height, Mon–Sun
+  retentionPct: 88,
+  conceptsHeld: 74,
+  timeReclaimed: '1h 52m',
+  idleMoments: 28,
+  weekBars: [35, 60, 50, 40, 75, 55, 45], // % height, Mon–Sun
   weekToday: 4, // index into weekBars
 }
 
@@ -14,8 +14,8 @@ export interface DepthRing {
 }
 
 export const depthRings: DepthRing[] = [
-  { label: 'Core intuitions', pct: 100 },
-  { label: 'Undergraduate depth', pct: 79 },
-  { label: 'Graduate depth', pct: 29 },
-  { label: 'Research frontier', pct: 0, locked: true },
+  { label: 'Shop-floor basics', pct: 100 },
+  { label: 'Operator fluency', pct: 72 },
+  { label: 'CFO-level judgment', pct: 24 },
+  { label: 'Capital markets', pct: 0, locked: true },
 ]

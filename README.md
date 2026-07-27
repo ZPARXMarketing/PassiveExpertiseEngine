@@ -31,8 +31,9 @@ Three tabs, three overlays:
 | **Feed** (home) | "Today's thread" — new-lesson cards, inline quick checks, and 30-second refreshes you consume in place. The thing you reach for in an idle window. |
 | **Story player** | Only *new* concepts get it: 5 cinematic beats, tap right/left to advance, beat 6 is the quick check that closes the lesson. |
 | **Tutor** | A lifeline, not a destination — summon it from any beat with "I don't get this", tap through a Socratic exchange, then resume the lesson where you left it. |
-| **Map** | The syllabus ("mirrors MIT 8.04"), unit by unit with live progress. |
-| **Constellation** | Zoom into one unit: concepts as nodes, prerequisites as edges. Tap an open node to queue it next in your feed. |
+| **Map** | The syllabus ("mirrors MIT 8.04"), unit by unit with live progress. Tap a unit to open its **path overview**. |
+| **Path overview** | Drill into a unit like another path: overview of the path, then each concept as a step. Tap a concept for **what you'll learn**. |
+| **Concept overview** | Sheet with learning goals and a CTA to queue the lesson in your feed (when available). |
 | **You** | Depth rings (core → undergrad → graduate → frontier), retention %, and time reclaimed. No streaks, no XP. |
 
 Progress (completed lessons, answered checks, queued concepts) persists in

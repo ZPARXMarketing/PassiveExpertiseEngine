@@ -16,11 +16,14 @@ export interface AppState {
   tab: Tab
   player: PlayerState | null
   tutorFromBeat: number | null // non-null = tutor sheet open, remembering the beat
-  constellationUnitId: string | null
+  /** Open unit path (roadmap drill-in). Null = closed. */
+  pathUnitId: string | null
+  /** Concept overview sheet within the open path. */
+  pathConceptId: string | null
   completedLessons: string[]
   checkAnswers: Record<string, number> // feed item id -> chosen option index
   revealedRefreshes: string[]
-  queuedLessonIds: string[] // queued from the constellation, surfaced atop the feed
+  queuedLessonIds: string[] // queued from the path, surfaced atop the feed
   toast: string | null
 }
 
@@ -34,8 +37,10 @@ export type Action =
   | { type: 'closeTutor' }
   | { type: 'answerCheck'; itemId: string; answer: number }
   | { type: 'revealRefresh'; itemId: string }
-  | { type: 'openConstellation'; unitId: string }
-  | { type: 'closeConstellation' }
+  | { type: 'openPath'; unitId: string }
+  | { type: 'closePath' }
+  | { type: 'openConceptOverview'; conceptId: string }
+  | { type: 'closeConceptOverview' }
   | { type: 'queueLesson'; lessonId: string }
   | { type: 'showToast'; message: string }
   | { type: 'clearToast' }
@@ -69,7 +74,8 @@ const initialState: AppState = {
   tab: 'feed',
   player: null,
   tutorFromBeat: null,
-  constellationUnitId: null,
+  pathUnitId: null,
+  pathConceptId: null,
   toast: null,
   ...loadProgress(),
 }
@@ -109,10 +115,14 @@ function reducer(state: AppState, action: Action): AppState {
       return state.revealedRefreshes.includes(action.itemId)
         ? state
         : { ...state, revealedRefreshes: [...state.revealedRefreshes, action.itemId] }
-    case 'openConstellation':
-      return { ...state, constellationUnitId: action.unitId }
-    case 'closeConstellation':
-      return { ...state, constellationUnitId: null }
+    case 'openPath':
+      return { ...state, pathUnitId: action.unitId, pathConceptId: null }
+    case 'closePath':
+      return { ...state, pathUnitId: null, pathConceptId: null }
+    case 'openConceptOverview':
+      return { ...state, pathConceptId: action.conceptId }
+    case 'closeConceptOverview':
+      return { ...state, pathConceptId: null }
     case 'queueLesson':
       if (
         state.queuedLessonIds.includes(action.lessonId) ||
@@ -123,7 +133,8 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         queuedLessonIds: [...state.queuedLessonIds, action.lessonId],
-        constellationUnitId: null,
+        pathConceptId: null,
+        pathUnitId: null,
         tab: 'feed',
         toast: `Queued next in your feed: ${lessonById(action.lessonId).title}`,
       }

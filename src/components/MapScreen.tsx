@@ -21,7 +21,8 @@ export function MapScreen() {
             (n) => n.lessonId && state.completedLessons.includes(n.lessonId),
           ).length ?? 0
         const pct = unitProgress(unit, bonus)
-        const current = !!unit.nodes
+        const hasPath = !!unit.nodes?.length
+        const current = !!unit.paceNote && hasPath
 
         if (unit.locked) {
           return (
@@ -32,6 +33,11 @@ export function MapScreen() {
                 </span>
                 <span className="unit-pct dim">—</span>
               </div>
+              {unit.overview && (
+                <div className="card-sub" style={{ marginTop: 6 }}>
+                  {unit.overview.slice(0, 90)}…
+                </div>
+              )}
             </div>
           )
         }
@@ -39,12 +45,18 @@ export function MapScreen() {
         return (
           <button
             key={unit.id}
+            type="button"
             className={`card map-unit${current ? ' highlight' : ''}`}
-            onClick={() =>
-              current
-                ? dispatch({ type: 'openConstellation', unitId: unit.id })
-                : dispatch({ type: 'showToast', 'message': 'Constellation coming for this unit — unit 2 is live' })
-            }
+            onClick={() => {
+              if (hasPath) {
+                dispatch({ type: 'openPath', unitId: unit.id })
+              } else {
+                dispatch({
+                  type: 'showToast',
+                  message: 'Path overview for this unit is still being composed',
+                })
+              }
+            }}
           >
             <div className="row">
               <span className="unit-name">
@@ -53,18 +65,27 @@ export function MapScreen() {
               <span className={`unit-pct${pct < 50 && !current ? ' dim' : ''}`}>{pct}%</span>
             </div>
             <div className="progress-track">
-              <div className={`progress-fill${pct < 50 && !current ? ' dim' : ''}`} style={{ width: `${pct}%` }} />
+              <div
+                className={`progress-fill${pct < 50 && !current ? ' dim' : ''}`}
+                style={{ width: `${pct}%` }}
+              />
             </div>
-            {current && unit.paceNote && (
+            {unit.overview && (
+              <div className="card-sub" style={{ marginTop: 8 }}>
+                {unit.overview.length > 110 ? `${unit.overview.slice(0, 110)}…` : unit.overview}
+              </div>
+            )}
+            {hasPath && (
               <div className="pace-note">
-                ↳ {unit.paceNote} · <em>tap → zoom into the constellation</em>
+                {unit.paceNote ? `↳ ${unit.paceNote} · ` : '↳ '}
+                <em>tap → open path overview</em>
               </div>
             )}
           </button>
         )
       })}
 
-      <div className="you-foot">tap a unit to see every concept inside</div>
+      <div className="you-foot">tap a path → see every concept inside · tap a concept → what you&apos;ll learn</div>
     </main>
   )
 }

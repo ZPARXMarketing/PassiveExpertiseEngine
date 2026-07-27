@@ -4,28 +4,18 @@ import type { ConceptNode } from '../data/types'
 
 const nodeById = (nodes: ConceptNode[], id: string) => nodes.find((n) => n.id === id)!
 
+/** Optional graph view of a unit’s concept nodes (kept for map-style browsing). */
 export function ConstellationView({ unitId }: { unitId: string }) {
   const { state, dispatch } = useApp()
   const unit = unitById(unitId)
-  const nodes = unit.nodes ?? []
+  const nodes = (unit.nodes ?? []).filter(
+    (n): n is ConceptNode & { x: number; y: number } => n.x != null && n.y != null,
+  )
   const edges = unit.edges ?? []
 
   const bonus = nodes.filter(
     (n) => n.lessonId && state.completedLessons.includes(n.lessonId),
   ).length
-
-  const tapNode = (node: ConceptNode) => {
-    const mastered =
-      node.status === 'mastered' ||
-      (node.lessonId && state.completedLessons.includes(node.lessonId))
-    if (node.status === 'locked') {
-      dispatch({ type: 'showToast', message: `${node.label.replace(' 🔒', '')} is locked — finish its prerequisites first` })
-    } else if (mastered) {
-      dispatch({ type: 'showToast', message: 'Mastered — it will resurface as a refresh when it starts to fade' })
-    } else if (node.lessonId) {
-      dispatch({ type: 'queueLesson', lessonId: node.lessonId })
-    }
-  }
 
   const statusOf = (node: ConceptNode) => {
     if (node.lessonId && state.completedLessons.includes(node.lessonId)) return 'mastered'
@@ -36,7 +26,7 @@ export function ConstellationView({ unitId }: { unitId: string }) {
     <div className="overlay">
       <div className="constellation">
         <div className="const-head">
-          <button className="const-back" onClick={() => dispatch({ type: 'closeConstellation' })}>
+          <button className="const-back" onClick={() => dispatch({ type: 'closePath' })}>
             ‹
           </button>
           <span className="const-title">
@@ -51,6 +41,7 @@ export function ConstellationView({ unitId }: { unitId: string }) {
           {edges.map((e) => {
             const a = nodeById(nodes, e.from)
             const b = nodeById(nodes, e.to)
+            if (a.x == null || a.y == null || b.x == null || b.y == null) return null
             return (
               <line
                 key={`${e.from}-${e.to}`}
@@ -67,7 +58,11 @@ export function ConstellationView({ unitId }: { unitId: string }) {
           {nodes.map((node) => {
             const status = statusOf(node)
             return (
-              <g key={node.id} className="node-tap" onClick={() => tapNode(node)}>
+              <g
+                key={node.id}
+                className="node-tap"
+                onClick={() => dispatch({ type: 'openConceptOverview', conceptId: node.id })}
+              >
                 {status === 'mastered' && (
                   <>
                     <circle cx={node.x} cy={node.y} r="15" fill="var(--neon)" opacity="0.25" />
@@ -108,7 +103,7 @@ export function ConstellationView({ unitId }: { unitId: string }) {
           })}
         </svg>
 
-        <div className="const-tip">tap any unlocked node → queue it next in the feed</div>
+        <div className="const-tip">tap a node → overview of what you&apos;ll learn</div>
         <div className="const-legend">
           <span style={{ color: 'var(--neon)' }}>● mastered</span>
           <span style={{ color: 'var(--cyan)' }}>◍ learning / open</span>

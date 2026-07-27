@@ -42,9 +42,18 @@ export type NodeStatus = 'mastered' | 'learning' | 'available' | 'locked'
 
 export interface ConceptNode {
   id: string
+  /** Short label used on the constellation graph */
   label: string
-  x: number
-  y: number
+  /** Clean display title for path lists & overviews */
+  title: string
+  /** One-line blurb on the path list */
+  summary: string
+  /** Longer overview of what you will learn when you open the concept */
+  overview: string
+  /** Bullet points of topics covered */
+  learnAbout: string[]
+  x?: number
+  y?: number
   labelDx?: number
   labelDy?: number
   status: NodeStatus
@@ -65,6 +74,10 @@ export interface Unit {
   masteredConcepts: number
   locked?: boolean
   paceNote?: string
+  /** Overview of this unit path as a whole */
+  overview?: string
+  /** What finishing this path unlocks or covers */
+  pathGoals?: string[]
   nodes?: ConceptNode[]
   edges?: ConceptEdge[]
 }

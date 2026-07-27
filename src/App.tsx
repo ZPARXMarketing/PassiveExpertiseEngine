@@ -5,7 +5,7 @@ import { MapScreen } from './components/MapScreen'
 import { YouScreen } from './components/YouScreen'
 import { StoryPlayer } from './components/StoryPlayer'
 import { TutorSheet } from './components/TutorSheet'
-import { ConstellationView } from './components/ConstellationView'
+import { UnitPathView } from './components/UnitPathView'
 import { Toast } from './components/Toast'
 
 function Shell() {
@@ -18,7 +18,7 @@ function Shell() {
         {state.tab === 'map' && <MapScreen />}
         {state.tab === 'you' && <YouScreen />}
         <TabBar />
-        {state.constellationUnitId && <ConstellationView unitId={state.constellationUnitId} />}
+        {state.pathUnitId && <UnitPathView unitId={state.pathUnitId} />}
         {state.player && <StoryPlayer />}
         {state.player && state.tutorFromBeat !== null && <TutorSheet />}
         <Toast />

@@ -27,6 +27,13 @@
   --danger: #ff5c7a;
   --danger-soft: rgba(255, 92, 122, 0.15);
 
+  /* terminal + heat map */
+  --terminal: #3dffc5;
+  --terminal-soft: rgba(61, 255, 197, 0.1);
+  --heat-hot: #ff6b3d;
+  --heat-mid: #ffb020;
+  --heat-cool: #2affa3;
+
   /* text */
   --text: #eef1f8;
   --text-dim: #9aa3b8;
@@ -43,4 +50,9 @@
   --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.45);
   --glow-card: 0 0 0 1px rgba(42, 255, 163, 0.35), 0 0 26px rgba(42, 255, 163, 0.12);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* shell */
+  --rail-w: 240px;
+  --shell-max: 1280px;
+  --bp-tablet: 860px;
 }

@@ -1,107 +1,149 @@
-export type Visual = 'wave' | 'orbit' | 'slit' | 'dice' | 'camera' | 'rings'
+export type NodeStatus = 'mastered' | 'learning' | 'available' | 'locked'
 
-export interface Beat {
-  headline: string
-  body: string
-  visual: Visual
+export type ViewId = 'subjects' | 'blueprint' | 'terminal' | 'synthesis' | 'dashboard'
+
+export type PnlTag = 'revenue' | 'cogs' | 'opex'
+
+export interface BlueprintNode {
+  id: string
+  label: string
+  x: number
+  y: number
+  labelDx?: number
+  labelDy?: number
+  status: NodeStatus
+  /** 80/20 core skill — highlighted on the blueprint */
+  is8020?: boolean
+  /** 0–100 retention; decays over time without practice */
+  retention: number
+  taskId?: string
+  /** One-line blurb on the path list */
+  summary?: string
+  /** Longer overview of what you will learn at this stop */
+  overview?: string
+  /** Bullet topics covered when you open the concept */
+  learnAbout?: string[]
 }
 
-export interface QuickCheck {
+export interface BlueprintEdge {
+  from: string
+  to: string
+  locked?: boolean
+}
+
+export interface Blueprint {
+  /** Overview of the whole skill path for this subject */
+  overview?: string
+  /** Outcomes finishing this path unlocks */
+  goals?: string[]
+  nodes: BlueprintNode[]
+  edges: BlueprintEdge[]
+}
+
+export interface CsvRow {
+  id: string
+  description: string
+  amount: number
+}
+
+export interface PracticeTask {
+  id: string
+  conceptId: string
+  title: string
+  prompt: string
+  kind: 'csv-pnl' | 'editor' | 'text'
+  dataset?: CsvRow[]
+  correct?: {
+    tags: Record<string, PnlTag>
+    grossMarginPct: number
+    netMarginPct: number
+  }
+  evalNote: string
+  starterText?: string
+}
+
+export interface SrsCard {
+  id: string
+  conceptId: string
+  front: string
+  back: string
+  ease: number
+  intervalDays: number
+  dueAt: string
+  reps: number
+}
+
+export interface SynthesisPrompt {
+  id: string
+  conceptId: string
+  prompt: string
+  rubricKeywords: string[]
+  passFeedback: string
+  failFeedback: string
+  cardsOnPass: Array<Pick<SrsCard, 'id' | 'conceptId' | 'front' | 'back'>>
+}
+
+export interface RapidCalcSpec {
+  formula: 'net-profit-margin' | 'gross-margin' | 'cpc'
+  rounds: number
+  timeLimitSec: number
+}
+
+export interface McqSpec {
   question: string
   options: string[]
   correctIndex: number
   explanation: string
 }
 
-export interface Lesson {
+export interface Drill {
   id: string
   conceptId: string
-  tag: string
   title: string
-  durationSec: number
-  whyNow?: string
-  beats: Beat[]
-  check: QuickCheck
+  kind: 'rapid-calc' | 'mcq'
+  spec: RapidCalcSpec | McqSpec
 }
 
-export type FeedItem =
-  | { kind: 'lesson'; id: string; lessonId: string; queuedByUser?: boolean }
-  | { kind: 'quickCheck'; id: string; tag: string; check: QuickCheck }
-  | {
-      kind: 'refresh'
-      id: string
-      tag: string
-      daysAgo: number
-      title: string
-      prompt: string
-      reveal: string
-      durationSec: number
-    }
-
-export type NodeStatus = 'mastered' | 'learning' | 'available' | 'locked'
-
-export interface ConceptNode {
-  id: string
-  /** Short label used on the constellation graph */
-  label: string
-  /** Clean display title for path lists & overviews */
-  title: string
-  /** One-line blurb on the path list */
-  summary: string
-  /** Longer overview of what you will learn when you open the concept */
-  overview: string
-  /** Bullet points of topics covered */
-  learnAbout: string[]
-  x?: number
-  y?: number
-  labelDx?: number
-  labelDy?: number
-  status: NodeStatus
-  lessonId?: string
+export interface SessionLogEntry {
+  at: string
+  activeSec: number
+  idleSec: number
 }
 
-export interface ConceptEdge {
-  from: string
-  to: string
-  locked?: boolean
+export interface DrillScore {
+  drillId: string
+  correct: number
+  total: number
+  at: string
 }
 
-export interface Unit {
-  id: string
-  index: number
-  title: string
-  totalConcepts: number
-  masteredConcepts: number
-  locked?: boolean
-  paceNote?: string
-  /** Overview of this unit path as a whole */
-  overview?: string
-  /** What finishing this path unlocks or covers */
-  pathGoals?: string[]
-  nodes?: ConceptNode[]
-  edges?: ConceptEdge[]
+export interface SubjectMetrics {
+  sessionSecondsActive: number
+  sessionSecondsIdle: number
+  sessionLog: SessionLogEntry[]
+  tasksCompleted: string[]
+  drillScores: DrillScore[]
+  synthPassed: string[]
 }
 
 export interface Subject {
-  name: string
-  sourceNote: string
-  totalConcepts: number
-  units: Unit[]
-}
-
-export interface TutorTurn {
-  from: 'tutor' | 'you'
-  text: string
-}
-
-export interface TutorBranch {
   id: string
-  label: string
-  turns: TutorTurn[]
+  goal: string
+  title: string
+  createdAt: string
+  blueprint: Blueprint
+  tasks: PracticeTask[]
+  synthPrompts: SynthesisPrompt[]
+  srs: SrsCard[]
+  drills: Drill[]
+  metrics: SubjectMetrics
 }
 
-export interface TutorScript {
-  conceptId: string
-  opening: TutorTurn[]
-  branches: TutorBranch[]
-}
+export const emptyMetrics = (): SubjectMetrics => ({
+  sessionSecondsActive: 0,
+  sessionSecondsIdle: 0,
+  sessionLog: [],
+  tasksCompleted: [],
+  drillScores: [],
+  synthPassed: [],
+})

@@ -1,8 +1,14 @@
-import type { BlueprintNode, ConceptStudy, Subject } from './types'
+import type { AppSettings, BlueprintNode, ConceptStudy, Subject } from './types'
+import {
+  completionBody,
+  OPENROUTER_BASE_URL,
+  parseCompletionJson,
+  type StudyRequest,
+} from './studyPrompt'
 
 /**
- * Serverless endpoint that talks to the cheap generation model (DeepSeek).
- * Kept behind a function so the API key never ships to the browser.
+ * Serverless fallback used when the site has a server-side OPENROUTER_API_KEY
+ * and the user has not entered their own in Settings.
  * See netlify/functions/generate-study.mts.
  */
 export const STUDY_ENDPOINT = '/.netlify/functions/generate-study'
@@ -12,6 +18,7 @@ export class StudyUnavailableError extends Error {}
 interface GenerateArgs {
   subject: Subject
   node: BlueprintNode
+  settings: AppSettings
   signal?: AbortSignal
 }
 
@@ -156,56 +163,162 @@ export function normalizeStudy(raw: RawStudy, fallback: ConceptStudy): ConceptSt
   }
 }
 
-/**
- * Ask the serverless function for a full study page on this concept.
- * Throws StudyUnavailableError with a human-readable reason on any failure —
- * the concept page keeps showing the outline in that case.
- */
-export async function generateStudy({ subject, node, signal }: GenerateArgs): Promise<ConceptStudy> {
+/** Everything the model needs to know about this concept. */
+function requestFor(subject: Subject, node: BlueprintNode): StudyRequest {
+  return {
+    goal: subject.goal,
+    subjectTitle: subject.title,
+    pathOverview: subject.blueprint.overview ?? null,
+    concept: cleanLabel(node.label),
+    summary: node.summary ?? null,
+    overview: node.overview ?? null,
+    learnAbout: node.learnAbout ?? [],
+    siblings: subject.blueprint.nodes
+      .filter((n) => n.id !== node.id)
+      .map((n) => cleanLabel(n.label)),
+  }
+}
+
+/** Readable message from an OpenRouter error body, whatever shape it arrives in. */
+async function openRouterError(res: Response): Promise<string> {
+  const body = (await res.json().catch(() => null)) as
+    | { error?: { message?: string } | string }
+    | null
+  const raw = typeof body?.error === 'string' ? body.error : body?.error?.message
+  if (res.status === 401) {
+    return raw ?? 'OpenRouter rejected the API key. Check it in Settings.'
+  }
+  if (res.status === 402) {
+    return raw ?? 'OpenRouter reports insufficient credit for this model.'
+  }
+  if (res.status === 404) {
+    return raw ?? 'OpenRouter does not recognise that model id. Check it in Settings.'
+  }
+  if (res.status === 429) {
+    return raw ?? 'OpenRouter rate-limited this key. Wait a moment and retry.'
+  }
+  return raw ?? `OpenRouter returned HTTP ${res.status}.`
+}
+
+/** Browser → OpenRouter directly, using the key the user stored in Settings. */
+async function generateViaOpenRouter(
+  request: StudyRequest,
+  settings: AppSettings,
+  signal?: AbortSignal,
+): Promise<RawStudy> {
+  const model = settings.model.trim() || 'deepseek/deepseek-chat'
+  let res: Response
+  try {
+    res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      signal,
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${settings.openRouterKey.trim()}`,
+        // OpenRouter attributes usage to the calling app with these
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Expertise Engine',
+      },
+      body: JSON.stringify(completionBody(request, model)),
+    })
+  } catch {
+    throw new StudyUnavailableError('Could not reach OpenRouter. Check your connection.')
+  }
+
+  if (!res.ok) throw new StudyUnavailableError(await openRouterError(res))
+
+  const completion = (await res.json().catch(() => null)) as {
+    choices?: { message?: { content?: string } }[]
+  } | null
+  const content = completion?.choices?.[0]?.message?.content
+  if (!content) {
+    throw new StudyUnavailableError('OpenRouter returned an empty completion. Try again.')
+  }
+  const parsed = parseCompletionJson(content)
+  if (!parsed) {
+    throw new StudyUnavailableError('The model did not return JSON. Try again or pick another model.')
+  }
+  return { ...parsed, model } as RawStudy
+}
+
+/** Fallback path: the site's own function, which holds a server-side key. */
+async function generateViaFunction(
+  request: StudyRequest,
+  signal?: AbortSignal,
+): Promise<RawStudy> {
   let res: Response
   try {
     res = await fetch(STUDY_ENDPOINT, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       signal,
-      body: JSON.stringify({
-        goal: subject.goal,
-        subjectTitle: subject.title,
-        pathOverview: subject.blueprint.overview ?? null,
-        concept: cleanLabel(node.label),
-        summary: node.summary ?? null,
-        overview: node.overview ?? null,
-        learnAbout: node.learnAbout ?? [],
-        siblings: subject.blueprint.nodes
-          .filter((n) => n.id !== node.id)
-          .map((n) => cleanLabel(n.label)),
-      }),
+      body: JSON.stringify(request),
     })
   } catch {
     throw new StudyUnavailableError(
-      'Could not reach the study generator. It runs as a Netlify function — deploy the site (or run `netlify dev`) to use it.',
+      'No OpenRouter key set. Add one in Settings, or deploy the site with OPENROUTER_API_KEY configured.',
     )
   }
 
   if (res.status === 404) {
     throw new StudyUnavailableError(
-      'Study generator not found at this origin. It ships as a Netlify function — plain `vite dev` does not serve it; use `netlify dev` or the deployed site.',
+      'No OpenRouter key set in Settings, and this origin has no study function. Add your key in Settings to generate.',
     )
   }
 
-  let payload: unknown = null
-  try {
-    payload = await res.json()
-  } catch {
-    payload = null
-  }
-
+  const payload = (await res.json().catch(() => null)) as { error?: string } | null
   if (!res.ok) {
-    const message =
-      (payload as { error?: string } | null)?.error ??
-      `Study generator failed (HTTP ${res.status}).`
-    throw new StudyUnavailableError(message)
+    throw new StudyUnavailableError(payload?.error ?? `Study generator failed (HTTP ${res.status}).`)
+  }
+  return (payload ?? {}) as RawStudy
+}
+
+/**
+ * Generate a full study page for this concept.
+ * Prefers the user's own OpenRouter key from Settings (kept in this browser);
+ * otherwise asks the site function, which uses a server-side key.
+ * Throws StudyUnavailableError with a human-readable reason on any failure —
+ * the concept page keeps showing the authored outline in that case.
+ */
+export async function generateStudy({
+  subject,
+  node,
+  settings,
+  signal,
+}: GenerateArgs): Promise<ConceptStudy> {
+  const request = requestFor(subject, node)
+  const raw = settings.openRouterKey.trim()
+    ? await generateViaOpenRouter(request, settings, signal)
+    : await generateViaFunction(request, signal)
+  return normalizeStudy(raw, outlineStudy(subject, node))
+}
+
+/** One cheap call that proves the key and model in Settings actually work. */
+export async function testOpenRouterKey(settings: AppSettings): Promise<string> {
+  const key = settings.openRouterKey.trim()
+  if (!key) throw new StudyUnavailableError('Enter an OpenRouter key first.')
+  const model = settings.model.trim() || 'deepseek/deepseek-chat'
+
+  let res: Response
+  try {
+    res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${key}`,
+        'HTTP-Referer': window.location.origin,
+        'X-Title': 'Expertise Engine',
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1,
+        messages: [{ role: 'user', content: 'ping' }],
+      }),
+    })
+  } catch {
+    throw new StudyUnavailableError('Could not reach OpenRouter. Check your connection.')
   }
 
-  return normalizeStudy((payload ?? {}) as RawStudy, outlineStudy(subject, node))
+  if (!res.ok) throw new StudyUnavailableError(await openRouterError(res))
+  return `Key works with ${model}.`
 }

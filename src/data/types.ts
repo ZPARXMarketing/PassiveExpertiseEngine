@@ -1,8 +1,50 @@
 export type NodeStatus = 'mastered' | 'learning' | 'available' | 'locked'
 
-export type ViewId = 'subjects' | 'blueprint' | 'terminal' | 'synthesis' | 'dashboard'
+export type ViewId = 'subjects' | 'blueprint' | 'concept' | 'terminal' | 'synthesis' | 'dashboard'
 
 export type PnlTag = 'revenue' | 'cogs' | 'opex'
+
+/** One prose block on a concept study page */
+export interface StudySection {
+  heading: string
+  body: string
+  bullets?: string[]
+}
+
+export interface StudyTerm {
+  term: string
+  definition: string
+}
+
+export interface StudyFormula {
+  name: string
+  expression: string
+  note?: string
+}
+
+export interface StudyCheck {
+  q: string
+  a: string
+}
+
+/**
+ * Long-form study page for a single concept.
+ * `authored` content ships with the sample curricula; `generated` content comes
+ * back from the study-page function (DeepSeek) and is cached on the subject.
+ */
+export interface ConceptStudy {
+  source: 'authored' | 'generated'
+  /** model id when source === 'generated' */
+  model?: string
+  generatedAt?: string
+  tagline: string
+  whyItMatters: string
+  sections: StudySection[]
+  formulas?: StudyFormula[]
+  keyTerms?: StudyTerm[]
+  mistakes?: string[]
+  checkYourself?: StudyCheck[]
+}
 
 export interface BlueprintNode {
   id: string
@@ -17,12 +59,16 @@ export interface BlueprintNode {
   /** 0–100 retention; decays over time without practice */
   retention: number
   taskId?: string
-  /** One-line blurb on the path list */
+  /** Emoji glyph shown inside the round concept icon */
+  icon?: string
+  /** One-line blurb under the concept icon */
   summary?: string
   /** Longer overview of what you will learn at this stop */
   overview?: string
   /** Bullet topics covered when you open the concept */
   learnAbout?: string[]
+  /** Full study page — authored in samples, or generated + cached */
+  study?: ConceptStudy
 }
 
 export interface BlueprintEdge {
@@ -137,6 +183,17 @@ export interface Subject {
   srs: SrsCard[]
   drills: Drill[]
   metrics: SubjectMetrics
+}
+
+/** Attach authored study pages to a subject's blueprint nodes by concept id. */
+export function attachStudy(subject: Subject, pages: Record<string, ConceptStudy>): Subject {
+  return {
+    ...subject,
+    blueprint: {
+      ...subject.blueprint,
+      nodes: subject.blueprint.nodes.map((n) => (pages[n.id] ? { ...n, study: pages[n.id] } : n)),
+    },
+  }
 }
 
 export const emptyMetrics = (): SubjectMetrics => ({

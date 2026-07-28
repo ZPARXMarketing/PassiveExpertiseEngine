@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type {
+  ConceptStudy,
   Drill,
   DrillScore,
   PnlTag,
@@ -37,6 +38,10 @@ export interface AppState {
   view: AppView
   subjects: Subject[]
   activeSubjectId: string | null
+  /** blueprint node whose study page is open */
+  openConceptId: string | null
+  studyLoading: boolean
+  studyError: string | null
   openTaskId: string | null
   /** pnl tags for active csv task */
   pnlTags: Record<string, PnlTag>
@@ -59,6 +64,11 @@ export type Action =
   | { type: 'setActiveSubject'; id: string }
   | { type: 'createSubject'; goal: string }
   | { type: 'deleteSubject'; id: string }
+  | { type: 'openConcept'; conceptId: string }
+  | { type: 'closeConcept' }
+  | { type: 'studyLoading' }
+  | { type: 'studyFailed'; message: string }
+  | { type: 'setStudy'; conceptId: string; study: ConceptStudy }
   | { type: 'openTask'; taskId: string }
   | { type: 'closeTask' }
   | { type: 'setPnlTag'; rowId: string; tag: PnlTag }
@@ -83,29 +93,36 @@ export type Action =
   | { type: 'clearToast' }
   | { type: 'resetProgress' }
 
-type Persisted = Pick<AppState, 'subjects' | 'activeSubjectId' | 'view'>
+type Persisted = Pick<AppState, 'subjects' | 'activeSubjectId' | 'view' | 'openConceptId'>
+
+const seeded = (): Persisted => {
+  const subjects = createSeedSubjects()
+  return {
+    subjects,
+    activeSubjectId: subjects[0]?.id ?? null,
+    view: 'subjects',
+    openConceptId: null,
+  }
+}
 
 function load(): Persisted {
   try {
     const raw = localStorage.getItem(PERSIST_KEY)
-    if (!raw) {
-      const subjects = createSeedSubjects()
-      return { subjects, activeSubjectId: subjects[0]?.id ?? null, view: 'subjects' }
-    }
+    if (!raw) return seeded()
     const parsed = JSON.parse(raw) as Partial<Persisted>
-    if (!parsed.subjects?.length) {
-      const subjects = createSeedSubjects()
-      return { subjects, activeSubjectId: subjects[0]?.id ?? null, view: 'subjects' }
-    }
+    if (!parsed.subjects?.length) return seeded()
     const subjects = hydrateSubjects(parsed.subjects)
+    const openConceptId = parsed.openConceptId ?? null
+    const view = parsed.view ?? 'subjects'
     return {
       subjects,
       activeSubjectId: parsed.activeSubjectId ?? subjects[0]?.id ?? null,
-      view: parsed.view ?? 'subjects',
+      // Never restore into a concept page with no concept behind it
+      view: view === 'concept' && !openConceptId ? 'blueprint' : view,
+      openConceptId,
     }
   } catch {
-    const subjects = createSeedSubjects()
-    return { subjects, activeSubjectId: subjects[0]?.id ?? null, view: 'subjects' }
+    return seeded()
   }
 }
 
@@ -115,6 +132,9 @@ const initialState: AppState = {
   view: loaded.view,
   subjects: loaded.subjects,
   activeSubjectId: loaded.activeSubjectId,
+  openConceptId: loaded.openConceptId,
+  studyLoading: false,
+  studyError: null,
   openTaskId: null,
   pnlTags: {},
   taskDraft: '',
@@ -163,6 +183,10 @@ function reducer(state: AppState, action: Action): AppState {
       return {
         ...state,
         activeSubjectId: action.id,
+        openConceptId: null,
+        studyLoading: false,
+        studyError: null,
+        view: state.view === 'concept' ? 'blueprint' : state.view,
         openTaskId: null,
         pnlTags: {},
         taskDraft: '',
@@ -192,6 +216,39 @@ function reducer(state: AppState, action: Action): AppState {
       const activeSubjectId =
         state.activeSubjectId === action.id ? (subjects[0]?.id ?? null) : state.activeSubjectId
       return { ...state, subjects, activeSubjectId, toast: 'Project removed' }
+    }
+    case 'openConcept':
+      return {
+        ...state,
+        view: 'concept',
+        openConceptId: action.conceptId,
+        studyLoading: false,
+        studyError: null,
+        drill: null,
+      }
+    case 'closeConcept':
+      return { ...state, view: 'blueprint', openConceptId: null, studyLoading: false }
+    case 'studyLoading':
+      return { ...state, studyLoading: true, studyError: null }
+    case 'studyFailed':
+      return { ...state, studyLoading: false, studyError: action.message }
+    case 'setStudy': {
+      if (!state.activeSubjectId) return state
+      return {
+        ...state,
+        studyLoading: false,
+        studyError: null,
+        toast: 'Study page generated',
+        subjects: updateSubject(state.subjects, state.activeSubjectId, (s) => ({
+          ...s,
+          blueprint: {
+            ...s.blueprint,
+            nodes: s.blueprint.nodes.map((n) =>
+              n.id === action.conceptId ? { ...n, study: action.study } : n,
+            ),
+          },
+        })),
+      }
     }
     case 'openTask': {
       const sub = state.subjects.find((s) => s.id === state.activeSubjectId)
@@ -505,11 +562,22 @@ function reducer(state: AppState, action: Action): AppState {
       return { ...state, toast: null }
     case 'resetProgress': {
       if (!state.activeSubjectId) return state
-      const fresh = subjectFromGoal(
-        state.subjects.find((s) => s.id === state.activeSubjectId)?.goal ?? 'reset',
-      )
+      const current = state.subjects.find((s) => s.id === state.activeSubjectId)
+      const fresh = subjectFromGoal(current?.goal ?? 'reset')
       fresh.id = state.activeSubjectId
-      fresh.title = state.subjects.find((s) => s.id === state.activeSubjectId)?.title ?? fresh.title
+      fresh.title = current?.title ?? fresh.title
+      // Generated study pages are content, not progress — a reset keeps them.
+      const generated = new Map(
+        (current?.blueprint.nodes ?? [])
+          .filter((n) => n.study?.source === 'generated')
+          .map((n) => [n.id, n.study!]),
+      )
+      fresh.blueprint = {
+        ...fresh.blueprint,
+        nodes: fresh.blueprint.nodes.map((n) =>
+          generated.has(n.id) ? { ...n, study: generated.get(n.id) } : n,
+        ),
+      }
       return {
         ...state,
         subjects: state.subjects.map((s) => (s.id === state.activeSubjectId ? fresh : s)),
@@ -543,9 +611,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       subjects: state.subjects,
       activeSubjectId: state.activeSubjectId,
       view: state.view,
+      openConceptId: state.openConceptId,
     }
     localStorage.setItem(PERSIST_KEY, JSON.stringify(payload))
-  }, [state.subjects, state.activeSubjectId, state.view])
+  }, [state.subjects, state.activeSubjectId, state.view, state.openConceptId])
 
   useEffect(() => {
     if (!state.toast) return

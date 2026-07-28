@@ -1,11 +1,12 @@
 import type { Subject } from '../types'
-import { emptyMetrics } from '../types'
+import { attachStudy, emptyMetrics } from '../types'
+import { b2bStudy } from './b2b-study'
 
 const now = () => new Date().toISOString()
 
 /** Second sample subject — proves multi-subject switcher + independent saves */
 export function createB2bSubject(goal = 'B2B lead generation'): Subject {
-  return {
+  const subject: Subject = {
     id: `sub-b2b-${Date.now()}`,
     goal,
     title: 'B2B lead generation',
@@ -21,6 +22,7 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
       nodes: [
         {
           id: 'icp',
+          icon: '🎯',
           label: 'ICP definition',
           x: 80,
           y: 50,
@@ -40,6 +42,7 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
         },
         {
           id: 'offer',
+          icon: '✉️',
           label: 'offer wedge',
           x: 180,
           y: 70,
@@ -60,6 +63,7 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
         },
         {
           id: 'channels',
+          icon: '📡',
           label: 'channel mix',
           x: 70,
           y: 150,
@@ -79,6 +83,7 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
         },
         {
           id: 'cpc',
+          icon: '🧮',
           label: 'CPC / CPL math',
           x: 190,
           y: 160,
@@ -98,6 +103,7 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
         },
         {
           id: 'pipeline',
+          icon: '🪜',
           label: 'pipeline stages',
           x: 130,
           y: 240,
@@ -205,4 +211,5 @@ export function createB2bSubject(goal = 'B2B lead generation'): Subject {
     ],
     metrics: emptyMetrics(),
   }
+  return attachStudy(subject, b2bStudy)
 }

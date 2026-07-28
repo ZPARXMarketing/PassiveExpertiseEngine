@@ -25,9 +25,12 @@ function enrichFromTemplate(subject: Subject, template: Subject): Subject {
     if (!t) return n
     return {
       ...n,
+      icon: n.icon ?? t.icon,
       summary: n.summary ?? t.summary,
       overview: n.overview ?? t.overview,
       learnAbout: n.learnAbout ?? t.learnAbout,
+      // Keep a generated study page; otherwise pick up newly authored content.
+      study: n.study?.source === 'generated' ? n.study : (t.study ?? n.study),
     }
   })
   return {

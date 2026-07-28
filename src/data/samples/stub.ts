@@ -22,6 +22,7 @@ export function createStubSubject(goal: string): Subject {
       nodes: [
         {
           id: root,
+          icon: '🎯',
           label: 'core outcome',
           x: 120,
           y: 50,
@@ -41,6 +42,7 @@ export function createStubSubject(goal: string): Subject {
         },
         {
           id: 'fundamentals',
+          icon: '🧱',
           label: 'fundamentals',
           x: 50,
           y: 140,
@@ -60,6 +62,7 @@ export function createStubSubject(goal: string): Subject {
         },
         {
           id: 'practice',
+          icon: '🛠️',
           label: 'deliberate practice',
           x: 190,
           y: 140,
@@ -80,6 +83,7 @@ export function createStubSubject(goal: string): Subject {
         },
         {
           id: 'retrieval',
+          icon: '🧠',
           label: 'retrieval',
           x: 120,
           y: 230,

@@ -1,12 +1,13 @@
 import type { Subject } from '../types'
-import { emptyMetrics } from '../types'
+import { attachStudy, emptyMetrics } from '../types'
+import { financeStudy } from './finance-study'
 
 const now = () => new Date().toISOString()
 
 /** Worked example: Finance for small businesses */
 export function createFinanceSubject(goal = 'Finance for small businesses'): Subject {
   const createdAt = now()
-  return {
+  const subject: Subject = {
     id: `sub-finance-${Date.now()}`,
     goal,
     title: 'Finance for small businesses',
@@ -22,6 +23,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
       nodes: [
         {
           id: 'revenue',
+          icon: '💵',
           label: 'revenue streams',
           x: 70,
           y: 48,
@@ -41,6 +43,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         },
         {
           id: 'cogs-opex',
+          icon: '⚖️',
           label: 'COGS vs OpEx',
           x: 170,
           y: 70,
@@ -61,6 +64,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         },
         {
           id: 'cash-vs-profit',
+          icon: '🏦',
           label: 'cash ≠ profit',
           x: 60,
           y: 150,
@@ -81,6 +85,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         },
         {
           id: 'gross-margin',
+          icon: '📈',
           label: 'gross margin',
           x: 180,
           y: 160,
@@ -101,6 +106,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         },
         {
           id: 'net-margin',
+          icon: '🎯',
           label: 'net margin',
           x: 120,
           y: 230,
@@ -119,6 +125,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         },
         {
           id: 'runway',
+          icon: '⏳',
           label: 'runway 🔒',
           x: 200,
           y: 250,
@@ -305,4 +312,5 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
     ],
     metrics: emptyMetrics(),
   }
+  return attachStudy(subject, financeStudy)
 }

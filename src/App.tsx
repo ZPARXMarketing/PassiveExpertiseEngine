@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { AppProvider, useApp, type AppView } from './state/AppContext'
 import { SubjectsHome } from './components/SubjectsHome'
 import { BlueprintScreen } from './components/BlueprintScreen'
+import { ConceptScreen } from './components/ConceptScreen'
 import { TerminalScreen } from './components/TerminalScreen'
 import { SynthesisScreen } from './components/SynthesisScreen'
 import { DashboardScreen } from './components/DashboardScreen'
@@ -24,7 +25,8 @@ function NavItems({ compact }: { compact?: boolean }) {
         <button
           key={item.id}
           type="button"
-          className={`nav-item${state.view === item.id ? ' active' : ''}`}
+          // A concept study page lives under Blueprint, so keep that entry lit
+          className={`nav-item${state.view === item.id || (item.id === 'blueprint' && state.view === 'concept') ? ' active' : ''}`}
           onClick={() => dispatch({ type: 'setView', view: item.id })}
         >
           <span className="nav-label">{item.label}</span>
@@ -103,6 +105,7 @@ function Shell() {
         )}
         {state.view === 'subjects' && <SubjectsHome />}
         {state.view === 'blueprint' && <BlueprintScreen />}
+        {state.view === 'concept' && <ConceptScreen />}
         {state.view === 'terminal' && <TerminalScreen />}
         {state.view === 'synthesis' && <SynthesisScreen />}
         {state.view === 'dashboard' && <DashboardScreen />}

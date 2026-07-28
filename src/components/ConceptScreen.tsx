@@ -87,7 +87,12 @@ export function ConceptScreen() {
     abortRef.current = controller
     dispatch({ type: 'studyLoading' })
     try {
-      const generated = await generateStudy({ subject, node, signal: controller.signal })
+      const generated = await generateStudy({
+        subject,
+        node,
+        settings: state.settings,
+        signal: controller.signal,
+      })
       dispatch({ type: 'setStudy', conceptId: node.id, study: generated })
     } catch (err) {
       if (controller.signal.aborted) return
@@ -164,7 +169,16 @@ export function ConceptScreen() {
       </div>
 
       {state.studyError && (
-        <p className="explain fail study-error">{state.studyError}</p>
+        <p className="explain fail study-error">
+          {state.studyError}{' '}
+          <button
+            type="button"
+            className="text-btn"
+            onClick={() => dispatch({ type: 'setView', view: 'settings' })}
+          >
+            Open Settings
+          </button>
+        </p>
       )}
 
       {state.studyLoading && (

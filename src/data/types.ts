@@ -1,6 +1,21 @@
 export type NodeStatus = 'mastered' | 'learning' | 'available' | 'locked'
 
-export type ViewId = 'subjects' | 'blueprint' | 'concept' | 'terminal' | 'synthesis' | 'dashboard'
+export type ViewId =
+  | 'subjects'
+  | 'blueprint'
+  | 'concept'
+  | 'terminal'
+  | 'synthesis'
+  | 'dashboard'
+  | 'settings'
+
+/** User-configurable generation settings, stored in this browser only. */
+export interface AppSettings {
+  /** OpenRouter API key; empty means fall back to the site's server-side key */
+  openRouterKey: string
+  /** OpenRouter model slug, e.g. "deepseek/deepseek-chat" */
+  model: string
+}
 
 export type PnlTag = 'revenue' | 'cogs' | 'opex'
 

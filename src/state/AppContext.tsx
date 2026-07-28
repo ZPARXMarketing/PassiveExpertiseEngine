@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import type {
+  AppSettings,
   ConceptStudy,
   Drill,
   DrillScore,
@@ -16,9 +17,12 @@ import type {
   ViewId,
 } from '../data/types'
 import { createSeedSubjects, hydrateSubjects, subjectFromGoal } from '../data/subjects'
+import { DEFAULT_MODEL } from '../data/studyPrompt'
 import type { SrsCard } from '../data/types'
 
 const PERSIST_KEY = 'pee-v2'
+/** Settings live under their own key so the API key is easy to find and clear. */
+const SETTINGS_KEY = 'pee-settings-v1'
 
 export type AppView = ViewId
 
@@ -38,6 +42,7 @@ export interface AppState {
   view: AppView
   subjects: Subject[]
   activeSubjectId: string | null
+  settings: AppSettings
   /** blueprint node whose study page is open */
   openConceptId: string | null
   studyLoading: boolean
@@ -64,6 +69,7 @@ export type Action =
   | { type: 'setActiveSubject'; id: string }
   | { type: 'createSubject'; goal: string }
   | { type: 'deleteSubject'; id: string }
+  | { type: 'setSettings'; settings: Partial<AppSettings> }
   | { type: 'openConcept'; conceptId: string }
   | { type: 'closeConcept' }
   | { type: 'studyLoading' }
@@ -126,12 +132,29 @@ function load(): Persisted {
   }
 }
 
+const defaultSettings = (): AppSettings => ({ openRouterKey: '', model: DEFAULT_MODEL })
+
+function loadSettings(): AppSettings {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY)
+    if (!raw) return defaultSettings()
+    const parsed = JSON.parse(raw) as Partial<AppSettings>
+    return {
+      openRouterKey: typeof parsed.openRouterKey === 'string' ? parsed.openRouterKey : '',
+      model: typeof parsed.model === 'string' && parsed.model.trim() ? parsed.model : DEFAULT_MODEL,
+    }
+  } catch {
+    return defaultSettings()
+  }
+}
+
 const loaded = load()
 
 const initialState: AppState = {
   view: loaded.view,
   subjects: loaded.subjects,
   activeSubjectId: loaded.activeSubjectId,
+  settings: loadSettings(),
   openConceptId: loaded.openConceptId,
   studyLoading: false,
   studyError: null,
@@ -217,6 +240,8 @@ function reducer(state: AppState, action: Action): AppState {
         state.activeSubjectId === action.id ? (subjects[0]?.id ?? null) : state.activeSubjectId
       return { ...state, subjects, activeSubjectId, toast: 'Project removed' }
     }
+    case 'setSettings':
+      return { ...state, settings: { ...state.settings, ...action.settings } }
     case 'openConcept':
       return {
         ...state,
@@ -615,6 +640,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
     localStorage.setItem(PERSIST_KEY, JSON.stringify(payload))
   }, [state.subjects, state.activeSubjectId, state.view, state.openConceptId])
+
+  useEffect(() => {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(state.settings))
+  }, [state.settings])
 
   useEffect(() => {
     if (!state.toast) return

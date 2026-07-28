@@ -152,10 +152,54 @@ button {
 }
 
 .rail-foot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
   font-size: 11px;
   color: var(--text-faint);
   padding: 0 8px;
   line-height: 1.4;
+}
+
+/* settings entry — gear at the bottom-left of the rail */
+.settings-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-left: -2px;
+  border-radius: 12px;
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 600;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.settings-btn svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+}
+
+.settings-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.settings-btn.active {
+  background: var(--neon-soft);
+  color: var(--neon);
+  box-shadow: inset 0 0 0 1px rgba(42, 255, 163, 0.28);
+}
+
+.settings-btn.compact {
+  padding: 8px 10px;
+  margin-left: 0;
+  flex: none;
 }
 
 .shell-main {
@@ -413,6 +457,7 @@ button {
 
 .pill:disabled {
   cursor: default;
+  opacity: 0.45;
 }
 
 .progress-track {
@@ -629,170 +674,75 @@ button {
   margin: 16px 0 10px;
 }
 
-/* ---------- concept orbs (round icons → study page) ---------- */
+/* ---------- blueprint graph (icons + retention rings) ---------- */
 
-.concept-orbs {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(132px, 1fr));
-  gap: 18px 12px;
-  margin-bottom: 22px;
-}
-
-.concept-orb {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 4px 10px;
-  border-radius: var(--radius);
-  text-align: center;
-  transition: transform 0.16s var(--ease), background 0.16s;
-}
-
-.concept-orb:hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.concept-orb:hover .orb-ring,
-.concept-orb:focus-visible .orb-ring {
-  transform: translateY(-3px);
-}
-
-.concept-orb:active .orb-ring {
-  transform: scale(0.95);
-}
-
-/* ring = retention arc drawn from --orb-pct in the node's status colour */
-.orb-ring {
-  position: relative;
-  width: 92px;
-  height: 92px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background:
-    conic-gradient(var(--orb-color) var(--orb-pct, 0deg), rgba(255, 255, 255, 0.07) 0);
-  transition: transform 0.16s var(--ease), box-shadow 0.2s;
-}
-
-.orb-face {
-  width: 78px;
-  height: 78px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background: radial-gradient(circle at 32% 26%, var(--surface-3), var(--surface) 72%);
-  border: 1px solid var(--border);
-}
-
-.orb-glyph {
-  font-size: 30px;
-  line-height: 1;
-  font-family: var(--font-display);
-  font-weight: 700;
-  color: var(--text);
-}
-
-.concept-orb--mastered .orb-ring {
-  box-shadow: 0 0 22px rgba(42, 255, 163, 0.22);
-}
-
-.concept-orb--learning .orb-ring {
-  box-shadow: 0 0 24px rgba(76, 201, 255, 0.25);
-}
-
-.concept-orb--locked .orb-ring {
-  opacity: 0.55;
-}
-
-.concept-orb--locked .orb-glyph {
-  font-size: 24px;
-}
-
-.concept-orb.core .orb-face {
-  border-color: rgba(42, 255, 163, 0.4);
-}
-
-.orb-core-badge {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  color: #04140c;
-  background: var(--neon);
-  box-shadow: 0 0 12px var(--neon-glow);
-}
-
-.orb-label {
-  font-family: var(--font-display);
-  font-size: 13.5px;
-  font-weight: 600;
-  line-height: 1.25;
-  /* two lines of headroom so status lines stay on one baseline across a row */
-  min-height: 2.5em;
-}
-
-.orb-status {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
-@media (max-width: 859px) {
-  .concept-orbs {
-    grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
-    gap: 14px 8px;
-  }
-
-  .orb-ring {
-    width: 80px;
-    height: 80px;
-  }
-
-  .orb-face {
-    width: 68px;
-    height: 68px;
-  }
-
-  .orb-glyph {
-    font-size: 26px;
-  }
-}
-
-/* dependency graph is secondary now — collapsed by default */
 .graph-card {
-  gap: 4px;
+  padding: 12px 10px 14px;
 }
 
-.graph-card summary {
+.bp-node {
   cursor: pointer;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 10px;
-  list-style: none;
+  outline: none;
 }
 
-.graph-card summary::-webkit-details-marker {
-  display: none;
+.bp-node-face {
+  transition: stroke 0.15s, filter 0.15s;
 }
 
-.graph-card summary::after {
-  content: '▾';
-  margin-left: auto;
-  color: var(--text-faint);
-  font-size: 12px;
+.bp-node:hover .bp-node-face,
+.bp-node:focus-visible .bp-node-face {
+  stroke: var(--text);
 }
 
-.graph-card[open] summary::after {
-  content: '▴';
+.bp-node:focus-visible .bp-node-arc {
+  filter: drop-shadow(0 0 6px currentColor);
+}
+
+.bp-node--mastered .bp-node-arc {
+  filter: drop-shadow(0 0 5px rgba(42, 255, 163, 0.5));
+}
+
+.bp-node--learning .bp-node-arc {
+  filter: drop-shadow(0 0 5px rgba(76, 201, 255, 0.5));
+}
+
+.bp-node--locked {
+  opacity: 0.6;
+}
+
+.bp-node-glyph {
+  font-size: 15px;
+  dominant-baseline: central;
+}
+
+.bp-node-badge {
+  font-size: 8px;
+  fill: #04140c;
+}
+
+.bp-node-label {
+  font-family: var(--font-display);
+  font-size: 8.5px;
+  font-weight: 600;
+  fill: var(--text);
+  /* knock the edge lines out from behind the label */
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
+}
+
+.bp-node-label--locked {
+  fill: var(--text-faint);
+}
+
+.bp-node-pct {
+  font-family: var(--font-mono);
+  font-size: 6.5px;
+  paint-order: stroke;
+  stroke: var(--surface);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 .path-step-status {
@@ -819,9 +769,12 @@ button {
 }
 
 .blueprint-svg {
+  display: block;
   width: 100%;
+  /* the 260-unit viewBox would scale to absurd type on a wide rail-side pane */
+  max-width: 520px;
   height: auto;
-  min-height: 280px;
+  margin: 0 auto;
 }
 
 .blueprint-svg text {
@@ -1132,6 +1085,59 @@ button {
   justify-content: space-between;
   gap: 10px;
   margin-top: 18px;
+}
+
+/* ---------- settings ---------- */
+
+.settings-card {
+  max-width: 46em;
+  margin-bottom: 12px;
+  gap: 8px;
+}
+
+.settings-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.settings-row .goal-input {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.settings-url {
+  font-family: var(--font-mono);
+  color: var(--cyan);
+}
+
+.settings-card code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--terminal);
+}
+
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.settings-result {
+  margin: 10px 0 0;
+}
+
+.settings-result:not(.fail) {
+  border-left-color: var(--neon);
+  color: var(--neon);
+}
+
+.settings-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: 4px;
 }
 
 /* ---------- terminal ---------- */

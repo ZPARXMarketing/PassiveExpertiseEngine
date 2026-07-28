@@ -1,19 +1,64 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useApp } from '../state/AppContext'
-import { formatDuration } from '../data/subjects'
+import { formatDuration, sampleSubjectForGoal } from '../data/subjects'
+import { createStubSubject } from '../data/samples/stub'
+import { generatePath, PathUnavailableError } from '../data/path'
 
 export function SubjectsHome() {
   const { state, dispatch } = useApp()
   const [goal, setGoal] = useState('')
+  const [designing, setDesigning] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
-  const create = () => {
+  // Abandon an in-flight design if the user navigates away
+  useEffect(() => () => abortRef.current?.abort(), [])
+
+  const create = async () => {
     const g = goal.trim()
     if (!g) {
       dispatch({ type: 'showToast', message: 'Type a goal first — e.g. “Finance for small businesses”' })
       return
     }
-    dispatch({ type: 'createSubject', goal: g })
-    setGoal('')
+    if (designing) return
+    setError(null)
+
+    // Authored samples are richer than anything generated — use them as-is.
+    const sample = sampleSubjectForGoal(g)
+    if (sample) {
+      dispatch({ type: 'addSubject', subject: sample })
+      setGoal('')
+      return
+    }
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    setDesigning(true)
+    try {
+      const subject = await generatePath({ goal: g, settings: state.settings, signal: controller.signal })
+      dispatch({
+        type: 'addSubject',
+        subject,
+        message: `Path designed: ${subject.title} — ${subject.blueprint.nodes.length} concepts`,
+      })
+      setGoal('')
+    } catch (e) {
+      if (controller.signal.aborted) return
+      // Any goal still gets a project: fall back to the generic starter path and
+      // say why the designed one is missing.
+      setError(
+        e instanceof PathUnavailableError ? e.message : 'Path generation failed unexpectedly.',
+      )
+      dispatch({
+        type: 'addSubject',
+        subject: { ...createStubSubject(g), source: 'stub' },
+        message: 'Created with the starter path — AI design unavailable',
+        navigate: false,
+      })
+      setGoal('')
+    } finally {
+      setDesigning(false)
+    }
   }
 
   return (
@@ -23,7 +68,8 @@ export function SubjectsHome() {
         <h1 className="feed-title">What do you want to get good at?</h1>
         <p className="page-lead">
           Each project is its own save: blueprint → timed practice → Feynman synthesis → drills.
-          Type any goal; known domains get a full sample curriculum.
+          Type any goal and the engine designs the path — the 80/20 concepts in dependency order,
+          plus the first task, explain-back prompt and drill.
         </p>
       </header>
 
@@ -35,18 +81,51 @@ export function SubjectsHome() {
           <input
             id="goal-input"
             className="goal-input"
-            placeholder="e.g. Finance for small businesses"
+            placeholder="e.g. Negotiating commercial leases"
             value={goal}
+            disabled={designing}
             onChange={(e) => setGoal(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && create()}
+            onKeyDown={(e) => e.key === 'Enter' && void create()}
           />
-          <button type="button" className="pill primary" onClick={create}>
-            Create
+          <button
+            type="button"
+            className="pill primary"
+            onClick={() => void create()}
+            disabled={designing}
+          >
+            {designing ? 'Designing…' : 'Create'}
           </button>
         </div>
         <div className="card-hint">
-          Try “Finance for small businesses” or “B2B lead generation” for the worked samples.
+          “Finance for small businesses” and “B2B lead generation” open the worked samples;
+          anything else is designed on the spot.
         </div>
+
+        {designing && (
+          <div className="path-designing">
+            <div className="feed-kicker">designing the path for “{goal.trim()}”</div>
+            <span className="skeleton-line w-40" />
+            <span className="skeleton-line" />
+            <span className="skeleton-line w-70" />
+            <div className="card-hint">
+              Picking the concepts that carry the result, ordering them by dependency, and writing
+              your first practice block.
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <p className="explain fail study-error">
+            {error}{' '}
+            <button
+              type="button"
+              className="text-btn"
+              onClick={() => dispatch({ type: 'setView', view: 'settings' })}
+            >
+              Open Settings
+            </button>
+          </p>
+        )}
       </div>
 
       <div className="subject-grid">
@@ -62,6 +141,7 @@ export function SubjectsHome() {
             <article key={s.id} className={`card subject-card${active ? ' highlight' : ''}`}>
               <div className="subject-card-top">
                 <span className="tag neon">{s.blueprint.nodes.filter((n) => n.is8020).length} core</span>
+                {s.source === 'generated' && <span className="tag">ai path</span>}
                 {active && <span className="tag">active</span>}
               </div>
               <h2 className="card-title">{s.title}</h2>

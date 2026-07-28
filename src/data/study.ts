@@ -63,8 +63,9 @@ export function outlineStudy(subject: Subject, node: BlueprintNode): ConceptStud
   return {
     source: 'authored',
     tagline: node.summary ?? `Core concept on the ${subject.title} path`,
+    // Falling back to the summary here would just repeat the tagline above it.
     whyItMatters:
-      node.summary ??
+      node.why ??
       `This concept sits between the ideas before it and the decisions after it on the ${subject.title} path.`,
     sections,
   }
@@ -180,7 +181,7 @@ function requestFor(subject: Subject, node: BlueprintNode): StudyRequest {
 }
 
 /** Readable message from an OpenRouter error body, whatever shape it arrives in. */
-async function openRouterError(res: Response): Promise<string> {
+export async function openRouterError(res: Response): Promise<string> {
   const body = (await res.json().catch(() => null)) as
     | { error?: { message?: string } | string }
     | null

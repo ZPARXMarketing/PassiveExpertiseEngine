@@ -121,9 +121,14 @@ New/rebuilt components:
 - Keep `index.html` fonts (Space Grotesk / Inter / JetBrains Mono).
 
 ## Out of scope (explicitly deferred)
-Real LLM curriculum generation & Feynman grading, real audio recording/
-transcription, Supabase/DB sync, auth. All are named as the swap points (mock
-modules in `src/data/`), consistent with today's "future AI boundary" design.
+Real Feynman grading, real audio recording/transcription, Supabase/DB sync, auth.
+All are named as the swap points (mock modules in `src/data/`), consistent with
+today's "future AI boundary" design.
+
+**Shipped since this plan was written:** LLM curriculum generation. A goal with no
+authored sample is now designed by the model — concept graph, first tasks, Feynman
+prompts and drills — via `src/data/path.ts` + `netlify/functions/generate-path.mts`,
+with the stub curriculum kept as the offline fallback. See README → Learning paths.
 
 ## Verification
 1. `npm install && npm run dev` — app boots at the new Subjects home.

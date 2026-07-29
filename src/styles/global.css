@@ -925,6 +925,19 @@ button {
   margin-bottom: 14px;
 }
 
+/* Waiting on a generated learning path, on the Subjects home */
+.path-designing {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-2);
+  animation: screen-in 0.3s var(--ease);
+}
+
 .skeleton-line {
   display: block;
   height: 11px;

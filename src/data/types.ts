@@ -78,6 +78,8 @@ export interface BlueprintNode {
   icon?: string
   /** One-line blurb under the concept icon */
   summary?: string
+  /** One sentence on the decision this concept changes — heads the study page */
+  why?: string
   /** Longer overview of what you will learn at this stop */
   overview?: string
   /** Bullet topics covered when you open the concept */
@@ -192,6 +194,14 @@ export interface Subject {
   goal: string
   title: string
   createdAt: string
+  /**
+   * Where the curriculum came from: an authored sample, the generic starter
+   * path, or a model-designed path. Absent on projects saved before paths could
+   * be generated — treat that as 'sample' | 'stub'.
+   */
+  source?: 'sample' | 'stub' | 'generated'
+  /** model id when source === 'generated' */
+  model?: string
   blueprint: Blueprint
   tasks: PracticeTask[]
   synthPrompts: SynthesisPrompt[]

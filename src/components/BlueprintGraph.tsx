@@ -54,11 +54,14 @@ export function BlueprintGraph({
   onOpen: (conceptId: string) => void
 }) {
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
+  // Authored samples fit the original 306-unit canvas; a generated path can be
+  // deeper, so the canvas grows to whatever the deepest row needs.
+  const height = Math.max(306, Math.ceil(nodes.reduce((m, n) => Math.max(m, n.y), 0) + 56))
 
   return (
     <svg
       className="blueprint-svg"
-      viewBox="0 0 260 306"
+      viewBox={`0 0 260 ${height}`}
       role="group"
       aria-label="Skill path — select a concept to open its study page"
     >

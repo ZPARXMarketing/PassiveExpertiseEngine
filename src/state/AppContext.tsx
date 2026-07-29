@@ -16,7 +16,7 @@ import type {
   Subject,
   ViewId,
 } from '../data/types'
-import { createSeedSubjects, hydrateSubjects, subjectFromGoal } from '../data/subjects'
+import { createSeedSubjects, hydrateSubjects, resetSubjectProgress } from '../data/subjects'
 import { DEFAULT_MODEL } from '../data/studyPrompt'
 import type { SrsCard } from '../data/types'
 
@@ -67,7 +67,7 @@ export interface AppState {
 export type Action =
   | { type: 'setView'; view: AppView }
   | { type: 'setActiveSubject'; id: string }
-  | { type: 'createSubject'; goal: string }
+  | { type: 'addSubject'; subject: Subject; message?: string; navigate?: boolean }
   | { type: 'deleteSubject'; id: string }
   | { type: 'setSettings'; settings: Partial<AppSettings> }
   | { type: 'openConcept'; conceptId: string }
@@ -221,14 +221,16 @@ function reducer(state: AppState, action: Action): AppState {
         cardFlipped: false,
         drill: null,
       }
-    case 'createSubject': {
-      const subject = subjectFromGoal(action.goal)
+    case 'addSubject': {
+      const { subject } = action
       return {
         ...state,
         subjects: [...state.subjects, subject],
         activeSubjectId: subject.id,
-        view: 'blueprint',
-        toast: `Project created: ${subject.title}`,
+        // Failed generations stay put so the reason stays on screen next to the input.
+        view: action.navigate === false ? state.view : 'blueprint',
+        openConceptId: null,
+        toast: action.message ?? `Project created: ${subject.title}`,
         openTaskId: null,
         pnlTags: {},
         taskDraft: '',
@@ -588,21 +590,8 @@ function reducer(state: AppState, action: Action): AppState {
     case 'resetProgress': {
       if (!state.activeSubjectId) return state
       const current = state.subjects.find((s) => s.id === state.activeSubjectId)
-      const fresh = subjectFromGoal(current?.goal ?? 'reset')
-      fresh.id = state.activeSubjectId
-      fresh.title = current?.title ?? fresh.title
-      // Generated study pages are content, not progress — a reset keeps them.
-      const generated = new Map(
-        (current?.blueprint.nodes ?? [])
-          .filter((n) => n.study?.source === 'generated')
-          .map((n) => [n.id, n.study!]),
-      )
-      fresh.blueprint = {
-        ...fresh.blueprint,
-        nodes: fresh.blueprint.nodes.map((n) =>
-          generated.has(n.id) ? { ...n, study: generated.get(n.id) } : n,
-        ),
-      }
+      if (!current) return state
+      const fresh = resetSubjectProgress(current)
       return {
         ...state,
         subjects: state.subjects.map((s) => (s.id === state.activeSubjectId ? fresh : s)),

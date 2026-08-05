@@ -73,6 +73,11 @@ export interface BlueprintNode {
   is8020?: boolean
   /** 0–100 retention; decays over time without practice */
   retention: number
+  /**
+   * ISO time of the last practice/review/drill that raised retention.
+   * Used by time-based decay so the heat map stays honest.
+   */
+  lastTouchedAt?: string
   taskId?: string
   /** Emoji glyph shown inside the round concept icon */
   icon?: string

@@ -41,8 +41,9 @@ const initials = (label: string): string =>
     .join('')
 
 /**
- * The skill path itself: each concept is a round icon on the graph, encircled
- * by its retention progress. Tapping a node opens that concept's study page.
+ * The optional dependency map. The roadmap is the primary view now — this is
+ * here for people who want the whole shape at once. Each concept is a round
+ * icon encircled by its retention; tapping one opens its study page.
  */
 export function BlueprintGraph({
   nodes,
@@ -54,14 +55,16 @@ export function BlueprintGraph({
   onOpen: (conceptId: string) => void
 }) {
   const byId = Object.fromEntries(nodes.map((n) => [n.id, n]))
-  // Authored samples fit the original 306-unit canvas; a generated path can be
-  // deeper, so the canvas grows to whatever the deepest row needs.
+  if (nodes.length === 0) return null
+  // Two selected paths sit in adjacent columns and a layer can be deep, so the
+  // canvas grows to whatever the widest column and deepest row need.
   const height = Math.max(306, Math.ceil(nodes.reduce((m, n) => Math.max(m, n.y), 0) + 56))
+  const width = Math.max(260, Math.ceil(nodes.reduce((m, n) => Math.max(m, n.x), 0) + 52))
 
   return (
     <svg
       className="blueprint-svg"
-      viewBox={`0 0 260 ${height}`}
+      viewBox={`0 0 ${width} ${height}`}
       role="group"
       aria-label="Skill path — select a concept to open its study page"
     >

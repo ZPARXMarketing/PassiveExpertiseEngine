@@ -1,4 +1,4 @@
-import type { AppSettings, BlueprintNode, ConceptStudy, Subject } from './types'
+import type { AppSettings, BlueprintNode, ConceptStudy, Domain } from './types'
 import {
   completionBody,
   OPENROUTER_BASE_URL,
@@ -16,7 +16,7 @@ export const STUDY_ENDPOINT = '/.netlify/functions/generate-study'
 export class StudyUnavailableError extends Error {}
 
 interface GenerateArgs {
-  subject: Subject
+  domain: Domain
   node: BlueprintNode
   settings: AppSettings
   signal?: AbortSignal
@@ -30,14 +30,14 @@ export const cleanLabel = (label: string): string => label.replace(' 🔒', '').
  * Used before anything is generated, and when the generator is unreachable —
  * the concept page is never empty.
  */
-export function outlineStudy(subject: Subject, node: BlueprintNode): ConceptStudy {
+export function outlineStudy(domain: Domain, node: BlueprintNode): ConceptStudy {
   const label = cleanLabel(node.label)
   const sections: ConceptStudy['sections'] = [
     {
       heading: `What ${label} covers`,
       body:
         node.overview ??
-        `${label} is a stop on the ${subject.title} path. Work it in Terminal or drill it on Dashboard to turn it from a definition into a reflex.`,
+        `${label} is a stop on the ${domain.title} path. Work it in Terminal or drill it on Dashboard to turn it from a definition into a reflex.`,
       bullets: node.learnAbout,
     },
   ]
@@ -62,18 +62,18 @@ export function outlineStudy(subject: Subject, node: BlueprintNode): ConceptStud
 
   return {
     source: 'authored',
-    tagline: node.summary ?? `Core concept on the ${subject.title} path`,
+    tagline: node.summary ?? `Core concept on the ${domain.title} path`,
     // Falling back to the summary here would just repeat the tagline above it.
     whyItMatters:
       node.why ??
-      `This concept sits between the ideas before it and the decisions after it on the ${subject.title} path.`,
+      `This concept sits between the ideas before it and the decisions after it on the ${domain.title} path.`,
     sections,
   }
 }
 
 /** Content shown on the concept page: authored/cached study, else the outline. */
-export function studyFor(subject: Subject, node: BlueprintNode): ConceptStudy {
-  return node.study ?? outlineStudy(subject, node)
+export function studyFor(domain: Domain, node: BlueprintNode): ConceptStudy {
+  return node.study ?? outlineStudy(domain, node)
 }
 
 interface RawStudy {
@@ -165,16 +165,16 @@ export function normalizeStudy(raw: RawStudy, fallback: ConceptStudy): ConceptSt
 }
 
 /** Everything the model needs to know about this concept. */
-function requestFor(subject: Subject, node: BlueprintNode): StudyRequest {
+function requestFor(domain: Domain, node: BlueprintNode): StudyRequest {
   return {
-    goal: subject.goal,
-    subjectTitle: subject.title,
-    pathOverview: subject.blueprint.overview ?? null,
+    goal: domain.topic,
+    subjectTitle: domain.title,
+    pathOverview: domain.blueprint.overview ?? null,
     concept: cleanLabel(node.label),
     summary: node.summary ?? null,
     overview: node.overview ?? null,
     learnAbout: node.learnAbout ?? [],
-    siblings: subject.blueprint.nodes
+    siblings: domain.blueprint.nodes
       .filter((n) => n.id !== node.id)
       .map((n) => cleanLabel(n.label)),
   }
@@ -218,7 +218,7 @@ async function generateViaOpenRouter(
         authorization: `Bearer ${settings.openRouterKey.trim()}`,
         // OpenRouter attributes usage to the calling app with these
         'HTTP-Referer': window.location.origin,
-        'X-Title': 'Expertise Engine',
+        'X-Title': 'Domain Engine',
       },
       body: JSON.stringify(completionBody(request, model)),
     })
@@ -282,16 +282,16 @@ async function generateViaFunction(
  * the concept page keeps showing the authored outline in that case.
  */
 export async function generateStudy({
-  subject,
+  domain,
   node,
   settings,
   signal,
 }: GenerateArgs): Promise<ConceptStudy> {
-  const request = requestFor(subject, node)
+  const request = requestFor(domain, node)
   const raw = settings.openRouterKey.trim()
     ? await generateViaOpenRouter(request, settings, signal)
     : await generateViaFunction(request, signal)
-  return normalizeStudy(raw, outlineStudy(subject, node))
+  return normalizeStudy(raw, outlineStudy(domain, node))
 }
 
 /** One cheap call that proves the key and model in Settings actually work. */
@@ -308,7 +308,7 @@ export async function testOpenRouterKey(settings: AppSettings): Promise<string> 
         'content-type': 'application/json',
         authorization: `Bearer ${key}`,
         'HTTP-Referer': window.location.origin,
-        'X-Title': 'Expertise Engine',
+        'X-Title': 'Domain Engine',
       },
       body: JSON.stringify({
         model,

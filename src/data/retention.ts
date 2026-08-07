@@ -8,7 +8,7 @@
  * Decay runs on app load and once per calendar day (see AppContext).
  */
 
-import type { BlueprintNode, Subject } from './types'
+import type { BlueprintNode, Domain } from './types'
 
 /** Approximate half-life in days — after this many idle days, retention ~halves. */
 export const RETENTION_HALF_LIFE_DAYS = 7
@@ -60,18 +60,18 @@ export function decayNode(node: BlueprintNode, now = Date.now()): BlueprintNode 
   return { ...node, retention: next }
 }
 
-/** Decay every non-locked node on a subject; returns a new subject only if something changed. */
-export function applyRetentionDecay(subject: Subject, now = Date.now()): Subject {
+/** Decay every non-locked node on a domain; returns a new domain only if something changed. */
+export function applyRetentionDecay(domain: Domain, now = Date.now()): Domain {
   let changed = false
-  const nodes = subject.blueprint.nodes.map((n) => {
+  const nodes = domain.blueprint.nodes.map((n) => {
     const next = decayNode(n, now)
     if (next !== n) changed = true
     return next
   })
-  if (!changed) return subject
+  if (!changed) return domain
   return {
-    ...subject,
-    blueprint: { ...subject.blueprint, nodes },
+    ...domain,
+    blueprint: { ...domain.blueprint, nodes },
   }
 }
 
@@ -89,8 +89,8 @@ export function touchNode(
 }
 
 /** Nodes that are cold enough to warrant an auto-generated drill. */
-export function coldConcepts(subject: Subject, threshold = LOW_RETENTION_THRESHOLD): BlueprintNode[] {
-  return subject.blueprint.nodes.filter(
+export function coldConcepts(domain: Domain, threshold = LOW_RETENTION_THRESHOLD): BlueprintNode[] {
+  return domain.blueprint.nodes.filter(
     (n) => n.status !== 'locked' && n.retention < threshold && n.retention > 0,
   )
 }

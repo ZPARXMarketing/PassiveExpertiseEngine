@@ -3,7 +3,7 @@
  * below threshold. Keeps the Dashboard "attack cold nodes" loop honest.
  */
 
-import type { AppSettings, BlueprintNode, Drill, Subject } from './types'
+import type { AppSettings, BlueprintNode, Drill, Domain } from './types'
 import {
   DEFAULT_MODEL,
   OPENROUTER_BASE_URL,
@@ -32,10 +32,10 @@ Rules:
 - Prefer realistic work scenarios over definition quizzes.
 - Plain text only inside strings. Never mention that you are an AI.`
 
-function userPrompt(subject: Subject, node: BlueprintNode): string {
+function userPrompt(domain: Domain, node: BlueprintNode): string {
   const lines = [
-    `Project goal: ${subject.goal}`,
-    `Path: ${subject.title}`,
+    `Project goal: ${domain.topic}`,
+    `Path: ${domain.title}`,
     `Concept id: ${node.id}`,
     `Concept label: ${node.label.replace(' 🔒', '')}`,
   ]
@@ -92,7 +92,7 @@ export function normalizeAutoDrill(
 }
 
 async function viaOpenRouter(
-  subject: Subject,
+  domain: Domain,
   node: BlueprintNode,
   settings: AppSettings,
   signal?: AbortSignal,
@@ -107,7 +107,7 @@ async function viaOpenRouter(
         'content-type': 'application/json',
         authorization: `Bearer ${settings.openRouterKey.trim()}`,
         'HTTP-Referer': window.location.origin,
-        'X-Title': 'Expertise Engine',
+        'X-Title': 'Domain Engine',
       },
       body: JSON.stringify({
         model,
@@ -116,7 +116,7 @@ async function viaOpenRouter(
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: AUTO_SYSTEM },
-          { role: 'user', content: userPrompt(subject, node) },
+          { role: 'user', content: userPrompt(domain, node) },
         ],
       }),
     })
@@ -131,7 +131,7 @@ async function viaOpenRouter(
   if (!content) throw new AutoDrillUnavailableError('Empty completion from OpenRouter.')
   const parsed = parseCompletionJson(content)
   if (!parsed) throw new AutoDrillUnavailableError('Model did not return JSON.')
-  const drill = normalizeAutoDrill(parsed, node, `auto-${slug(subject.title)}`)
+  const drill = normalizeAutoDrill(parsed, node, `auto-${slug(domain.title)}`)
   if (!drill) throw new AutoDrillUnavailableError('Model returned an unusable drill.')
   return drill
 }
@@ -141,12 +141,12 @@ async function viaOpenRouter(
  * Requires an OpenRouter key in Settings (browser path only for now).
  */
 export async function generateAutoDrill({
-  subject,
+  domain,
   node,
   settings,
   signal,
 }: {
-  subject: Subject
+  domain: Domain
   node: BlueprintNode
   settings: AppSettings
   signal?: AbortSignal
@@ -156,12 +156,12 @@ export async function generateAutoDrill({
       'Add an OpenRouter key in Settings to auto-generate drills for decaying concepts.',
     )
   }
-  return viaOpenRouter(subject, node, settings, signal)
+  return viaOpenRouter(domain, node, settings, signal)
 }
 
 /** Avoid spamming: skip if we already have an auto- drill for this concept. */
-export function needsAutoDrill(subject: Subject, conceptId: string): boolean {
-  return !subject.drills.some(
+export function needsAutoDrill(domain: Domain, conceptId: string): boolean {
+  return !domain.drills.some(
     (d) => d.conceptId === conceptId && d.id.includes('-auto-') && d.id.includes(conceptId),
   )
 }

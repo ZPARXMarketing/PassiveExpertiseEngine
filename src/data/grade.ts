@@ -182,7 +182,7 @@ async function gradeViaOpenRouter(
         'content-type': 'application/json',
         authorization: `Bearer ${settings.openRouterKey.trim()}`,
         'HTTP-Referer': window.location.origin,
-        'X-Title': 'Expertise Engine',
+        'X-Title': 'Domain Engine',
       },
       body: JSON.stringify({
         model,

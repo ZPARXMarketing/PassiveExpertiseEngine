@@ -1,7 +1,7 @@
 import { useApp } from '../state/AppContext'
 import { computePnl, evaluatePnlTask } from '../data/pnl'
 import type { PnlTag } from '../data/types'
-import { formatDuration } from '../data/subjects'
+import { formatDuration } from '../data/domains'
 
 const TAGS: { id: PnlTag; label: string }[] = [
   { id: 'revenue', label: 'Revenue' },
@@ -10,20 +10,20 @@ const TAGS: { id: PnlTag; label: string }[] = [
 ]
 
 export function TerminalScreen() {
-  const { state, activeSubject, dispatch } = useApp()
+  const { state, activeDomain, dispatch } = useApp()
 
-  if (!activeSubject) {
+  if (!activeDomain) {
     return (
       <main className="content-pane">
-        <p className="page-lead">Select a project first.</p>
+        <p className="page-lead">Select a domain first.</p>
       </main>
     )
   }
 
   const task =
-    activeSubject.tasks.find((t) => t.id === state.openTaskId) ??
-    activeSubject.tasks.find((t) => !activeSubject.metrics.tasksCompleted.includes(t.id)) ??
-    activeSubject.tasks[0]
+    activeDomain.tasks.find((t) => t.id === state.openTaskId) ??
+    activeDomain.tasks.find((t) => !activeDomain.metrics.tasksCompleted.includes(t.id)) ??
+    activeDomain.tasks[0]
 
   if (!task) {
     return (
@@ -31,7 +31,7 @@ export function TerminalScreen() {
         <header className="page-header">
           <div className="feed-kicker">direct practice · execution terminal</div>
           <h1 className="feed-title">Terminal</h1>
-          <p className="page-lead">No tasks on this project yet.</p>
+          <p className="page-lead">No practice blocks on this domain yet.</p>
         </header>
       </main>
     )
@@ -59,13 +59,16 @@ export function TerminalScreen() {
   }
 
   const totals = task.dataset ? computePnl(task.dataset, state.pnlTags) : null
-  const done = activeSubject.metrics.tasksCompleted.includes(task.id)
+  const done = activeDomain.metrics.tasksCompleted.includes(task.id)
 
   return (
     <main className="content-pane">
       <header className="page-header terminal-header">
         <div>
-          <div className="feed-kicker">direct practice · execution terminal</div>
+          <button type="button" className="back-link" onClick={() => dispatch({ type: 'closeTask' })}>
+            ← Feed
+          </button>
+          <div className="feed-kicker">deep work · execution terminal</div>
           <h1 className="feed-title">Terminal</h1>
         </div>
         <div className={`session-timer${state.sessionIdle ? ' idle' : ''}${state.sessionRunning ? ' live' : ''}`}>
@@ -76,14 +79,14 @@ export function TerminalScreen() {
       </header>
 
       <div className="task-switcher">
-        {activeSubject.tasks.map((t) => (
+        {activeDomain.tasks.map((t) => (
           <button
             key={t.id}
             type="button"
             className={`pill${state.openTaskId === t.id || (!state.openTaskId && t.id === task.id) ? ' primary' : ''}`}
             onClick={() => dispatch({ type: 'openTask', taskId: t.id })}
           >
-            {activeSubject.metrics.tasksCompleted.includes(t.id) ? '✓ ' : ''}
+            {activeDomain.metrics.tasksCompleted.includes(t.id) ? '✓ ' : ''}
             {t.title}
           </button>
         ))}

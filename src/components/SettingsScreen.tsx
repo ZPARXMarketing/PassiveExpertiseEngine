@@ -18,7 +18,7 @@ export function SettingsScreen() {
   const [testing, setTesting] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null)
 
-  const { openRouterKey, model } = state.settings
+  const { openRouterKey, model, dailyDoses } = state.settings
   const hasKey = openRouterKey.trim().length > 0
 
   const update = (patch: Partial<typeof state.settings>) => {
@@ -54,8 +54,8 @@ export function SettingsScreen() {
         <div className="feed-kicker">configuration</div>
         <h1 className="feed-title">Settings</h1>
         <p className="page-lead">
-          Study pages are generated through <strong>OpenRouter</strong>, so you can point the app at
-          any cheap model. Everything here is stored in this browser only.
+          Domains, path layers and study pages are generated through <strong>OpenRouter</strong>, so
+          you can point the app at any cheap model. Everything here is stored in this browser only.
         </p>
       </header>
 
@@ -125,6 +125,28 @@ export function SettingsScreen() {
       </section>
 
       <section className="card settings-card">
+        <div className="feed-kicker">daily dose target</div>
+        <p className="card-sub">
+          How many Feed doses a day the scheduler paces against. This sets the plan&apos;s rhythm —
+          it never gates what you can do, and missing it does not break a streak that a completed
+          dose has already earned.
+        </p>
+        <div className="settings-row">
+          <input
+            id="daily-doses"
+            className="goal-input"
+            type="range"
+            min={1}
+            max={10}
+            step={1}
+            value={dailyDoses}
+            onChange={(e) => update({ dailyDoses: Number(e.target.value) })}
+          />
+          <span className="tag neon">{dailyDoses} / day</span>
+        </div>
+      </section>
+
+      <section className="card settings-card">
         <div className="feed-kicker">how generation resolves</div>
         <ul className="path-goals">
           <li>
@@ -136,8 +158,9 @@ export function SettingsScreen() {
             function, which uses <code>OPENROUTER_API_KEY</code> from the site environment.
           </li>
           <li>
-            <strong>Neither</strong> — concept pages still show their authored curriculum notes;
-            only the deep-dive button is unavailable.
+            <strong>Neither</strong> — domains still get starter routes, selected paths still open
+            with a starter layer, and concept pages still show their authored notes. Only the
+            AI-designed versions are unavailable, and the reason stays on screen.
           </li>
         </ul>
         <p className="card-hint">
@@ -152,13 +175,13 @@ export function SettingsScreen() {
         <p className="card-sub">
           Each generated study page is cached on its concept, so a page is only paid for once.
           Regenerate from the concept page when you want a fresh take. Cached pages survive a
-          project progress reset.
+          domain progress reset.
         </p>
         <div className="settings-stat">
           <span className="stat-num">
-            {state.subjects.reduce(
-              (total, s) =>
-                total + s.blueprint.nodes.filter((n) => n.study?.source === 'generated').length,
+            {state.domains.reduce(
+              (total, d) =>
+                total + d.blueprint.nodes.filter((n) => n.study?.source === 'generated').length,
               0,
             )}
           </span>

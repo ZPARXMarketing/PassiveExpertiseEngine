@@ -1,11 +1,12 @@
 /**
- * Learning-path generator (server-side key path).
+ * Path-layer generator (server-side key path).
  *
- * The browser POSTs the goal the user typed; this function asks a model through
- * OpenRouter to design the whole skill path — concept graph, first practice
- * tasks, Feynman prompts and drills — and returns it as JSON. Used only when the
- * site has a server-side key; if the user entered their own OpenRouter key in
- * Settings, the browser calls OpenRouter directly and never touches this.
+ * The browser POSTs one path of one domain plus the layer depth it wants; this
+ * function asks a model through OpenRouter for that layer's 5–8 concepts and the
+ * practice hanging off them — tasks, retrieval items, teach-backs and drills —
+ * and returns it as JSON. One layer per call is the whole point: it is what
+ * keeps a domain the size of "quantum mechanics" from arriving all at once.
+ * Used only when the site has a server-side key.
  *
  * Env:
  *   OPENROUTER_API_KEY  required for this path
@@ -14,7 +15,7 @@
  */
 
 import { DEFAULT_MODEL, OPENROUTER_BASE_URL, parseCompletionJson } from '../../src/data/studyPrompt.ts'
-import { pathCompletionBody, type PathRequest } from '../../src/data/pathPrompt.ts'
+import { layerCompletionBody, type LayerRequest } from '../../src/data/domainPrompt.ts'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -24,7 +25,7 @@ const json = (body: unknown, status = 200) =>
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    return json({ error: 'POST a goal to this endpoint.' }, 405)
+    return json({ error: 'POST a layer request to this endpoint.' }, 405)
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY
@@ -38,16 +39,25 @@ export default async function handler(req: Request): Promise<Response> {
     )
   }
 
-  let body: PathRequest
+  let body: LayerRequest
   try {
-    body = (await req.json()) as PathRequest
+    body = (await req.json()) as LayerRequest
   } catch {
     return json({ error: 'Invalid JSON body.' }, 400)
   }
 
-  const goal = body.goal?.trim()
-  if (!goal) {
-    return json({ error: 'Missing "goal".' }, 400)
+  if (!body.topic?.trim() || !body.pathTitle?.trim()) {
+    return json({ error: 'Missing "topic" or "pathTitle".' }, 400)
+  }
+
+  const request: LayerRequest = {
+    topic: body.topic.trim(),
+    domainTitle: body.domainTitle?.trim() || body.topic.trim(),
+    pathTitle: body.pathTitle.trim(),
+    pathPitch: body.pathPitch?.trim() || '',
+    pathPayoff: body.pathPayoff?.trim() || '',
+    layerIndex: Number.isFinite(body.layerIndex) ? Math.max(0, Math.round(body.layerIndex)) : 0,
+    covered: Array.isArray(body.covered) ? body.covered.slice(0, 24) : [],
   }
 
   const baseUrl = (process.env.OPENROUTER_BASE_URL || OPENROUTER_BASE_URL).replace(/\/$/, '')
@@ -60,10 +70,10 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': process.env.URL || 'https://expertise-engine.netlify.app',
-        'X-Title': 'Expertise Engine',
+        'HTTP-Referer': process.env.URL || 'https://domain-engine.netlify.app',
+        'X-Title': 'Domain Engine',
       },
-      body: JSON.stringify(pathCompletionBody({ goal }, model)),
+      body: JSON.stringify(layerCompletionBody(request, model)),
     })
   } catch {
     return json({ error: 'Could not reach OpenRouter.' }, 502)

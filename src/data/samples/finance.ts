@@ -1,17 +1,105 @@
-import type { Subject } from '../types'
-import { attachStudy, emptyMetrics } from '../types'
+import type { Domain } from '../types'
+import { attachStudy, emptyMetrics, emptyProgress } from '../types'
+import { hydrateSeeds } from '../retrieval'
 import { financeStudy } from './finance-study'
 
 const now = () => new Date().toISOString()
 
-/** Worked example: Finance for small businesses */
-export function createFinanceSubject(goal = 'Finance for small businesses'): Subject {
-  const createdAt = now()
-  const subject: Subject = {
-    id: `sub-finance-${Date.now()}`,
-    goal,
+const READ = 'read-the-numbers'
+const CASH = 'cash-and-runway'
+
+/**
+ * Worked example: Finance for small businesses.
+ *
+ * Authored as a domain with three routes. Two are pre-selected and walkable;
+ * the third has no concepts yet and demonstrates a side quest — selecting it
+ * generates its first layer like any other path.
+ */
+export function createFinanceDomain(topic = 'Finance for small businesses'): Domain {
+  const domain: Domain = {
+    id: `dom-finance-${Date.now()}`,
+    topic,
     title: 'Finance for small businesses',
-    createdAt,
+    createdAt: now(),
+    source: 'sample',
+    pathsChosen: true,
+    paths: [
+      {
+        id: READ,
+        title: 'Read the numbers',
+        icon: '📊',
+        pitch: 'Turn messy books into margins you can act on.',
+        payoff: 'You can open any P&L and say what it is telling you in a minute.',
+        depth: 'moderate',
+        weeks: 6,
+        selected: true,
+        selectedAt: now(),
+        layers: [
+          {
+            id: `${READ}-layer-0`,
+            title: 'From sales to margin',
+            conceptIds: ['revenue', 'cogs-opex', 'gross-margin', 'net-margin'],
+            unlocked: true,
+            unlockedAt: now(),
+            generated: true,
+          },
+          {
+            id: `${READ}-layer-1`,
+            title: 'Pricing and mix',
+            conceptIds: [],
+            unlocked: false,
+            generated: false,
+          },
+        ],
+      },
+      {
+        id: CASH,
+        title: 'Survive the cash cycle',
+        icon: '🏦',
+        pitch: 'Why a profitable month can still miss payroll, and what to watch instead.',
+        payoff: 'You know your cash trough eight weeks out, before it arrives.',
+        depth: 'shallow',
+        weeks: 3,
+        selected: true,
+        selectedAt: now(),
+        layers: [
+          {
+            id: `${CASH}-layer-0`,
+            title: 'Cash vs profit',
+            conceptIds: ['cash-vs-profit'],
+            unlocked: true,
+            unlockedAt: now(),
+            generated: true,
+          },
+          {
+            id: `${CASH}-layer-1`,
+            title: 'Burn and runway',
+            conceptIds: ['runway'],
+            unlocked: false,
+            generated: true,
+          },
+        ],
+      },
+      {
+        id: 'raising-and-lending',
+        title: 'Money from outside',
+        icon: '🤝',
+        pitch: 'Debt, lines of credit and investors — what each one actually costs you.',
+        payoff: 'You can tell which kind of money fits the hole you are filling.',
+        depth: 'moderate',
+        weeks: 5,
+        selected: false,
+        layers: [
+          {
+            id: 'raising-and-lending-layer-0',
+            title: 'Foundations',
+            conceptIds: [],
+            unlocked: false,
+            generated: false,
+          },
+        ],
+      },
+    ],
     blueprint: {
       overview:
         'The operator path from money in the door to “can we survive next quarter?” — unit economics first, then cash discipline, then runway.',
@@ -27,12 +115,13 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           label: 'revenue streams',
           x: 70,
           y: 48,
-          labelDx: -42,
-          labelDy: 28,
+          pathId: READ,
+          layer: 0,
           status: 'mastered',
           is8020: true,
           retention: 92,
           summary: 'Where the money actually comes from',
+          why: 'Decides which product mix you push before you touch pricing.',
           overview:
             'You will map every dollar of sales to a stream (packages, memberships, retail) so later margin math has clean inputs — not one noisy bank total.',
           learnAbout: [
@@ -46,14 +135,15 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           icon: '⚖️',
           label: 'COGS vs OpEx',
           x: 170,
-          y: 70,
-          labelDx: -20,
-          labelDy: 28,
+          y: 130,
+          pathId: READ,
+          layer: 0,
           status: 'mastered',
           is8020: true,
           retention: 86,
           taskId: 'task-medspa-pnl',
           summary: 'Cost of delivery vs cost of running the shop',
+          why: 'Mis-tag one line and every margin below it is wrong.',
           overview:
             'Tag costs that scale with each sale (COGS) vs costs of keeping the doors open (OpEx). This split is the hinge for gross margin.',
           learnAbout: [
@@ -63,39 +153,19 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           ],
         },
         {
-          id: 'cash-vs-profit',
-          icon: '🏦',
-          label: 'cash ≠ profit',
-          x: 60,
-          y: 150,
-          labelDx: -36,
-          labelDy: 30,
-          status: 'learning',
-          is8020: true,
-          retention: 54,
-          taskId: 'task-cash-forecast',
-          summary: 'Why P&L love can still mean a cash crunch',
-          overview:
-            'Accrual profit and bank balance diverge. You will forecast near-term cash so “we made money” never blinds you to payroll risk.',
-          learnAbout: [
-            'Timing: when you bill vs when cash lands',
-            'Owner draws, inventory buys, and other non-P&L drains',
-            'A simple weekly cash forecast shape',
-          ],
-        },
-        {
           id: 'gross-margin',
           icon: '📈',
           label: 'gross margin',
-          x: 180,
-          y: 160,
-          labelDx: -24,
-          labelDy: 30,
+          x: 70,
+          y: 212,
+          pathId: READ,
+          layer: 0,
           status: 'available',
           is8020: true,
           retention: 48,
           taskId: 'task-medspa-pnl',
           summary: 'Profit after the cost of delivering the sale',
+          why: 'Tells you whether the product itself works, before overhead muddies it.',
           overview:
             'Gross margin = (Revenue − COGS) / Revenue. You will compute it from messy books and use it to judge product mix and pricing power.',
           learnAbout: [
@@ -108,13 +178,14 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           id: 'net-margin',
           icon: '🎯',
           label: 'net margin',
-          x: 120,
-          y: 230,
-          labelDx: -18,
-          labelDy: 30,
+          x: 170,
+          y: 212,
+          pathId: READ,
+          layer: 0,
           status: 'available',
           retention: 32,
           summary: 'What is left after everything',
+          why: 'Decides whether growth plans are affordable or wishful.',
           overview:
             'Net margin folds OpEx into the story. You will connect gross → operating costs → bottom line so growth plans stay honest.',
           learnAbout: [
@@ -124,32 +195,50 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           ],
         },
         {
+          id: 'cash-vs-profit',
+          icon: '🏦',
+          label: 'cash ≠ profit',
+          x: 340,
+          y: 48,
+          pathId: CASH,
+          layer: 0,
+          status: 'learning',
+          is8020: true,
+          retention: 54,
+          taskId: 'task-cash-forecast',
+          summary: 'Why P&L love can still mean a cash crunch',
+          why: 'Stops you spending against profit that has not landed in the bank.',
+          overview:
+            'Accrual profit and bank balance diverge. You will forecast near-term cash so “we made money” never blinds you to payroll risk.',
+          learnAbout: [
+            'Timing: when you bill vs when cash lands',
+            'Owner draws, inventory buys, and other non-P&L drains',
+            'A simple weekly cash forecast shape',
+          ],
+        },
+        {
           id: 'runway',
           icon: '⏳',
-          label: 'runway 🔒',
-          x: 200,
-          y: 250,
-          labelDx: -10,
-          labelDy: 28,
+          label: 'runway',
+          x: 340,
+          y: 130,
+          pathId: CASH,
+          layer: 1,
           status: 'locked',
           retention: 0,
           summary: 'Months until cash hits zero at current burn',
+          why: 'Turns “are we fine?” into a date you can plan against.',
           overview:
-            'Runway turns burn rate into a survival clock. Locked until cash vs profit and margins are solid — you need both to trust the number.',
-          learnAbout: [
-            'Cash runway formula',
-            'Fixed vs variable burn',
-            'When to cut, raise, or change pace',
-          ],
+            'Runway turns burn rate into a survival clock. It stays collapsed until cash vs profit is solid — you need that first to trust the number.',
+          learnAbout: ['Cash runway formula', 'Fixed vs variable burn', 'When to cut, raise, or change pace'],
         },
       ],
       edges: [
         { from: 'revenue', to: 'cogs-opex' },
-        { from: 'cogs-opex', to: 'cash-vs-profit' },
         { from: 'cogs-opex', to: 'gross-margin' },
+        { from: 'cogs-opex', to: 'net-margin' },
         { from: 'gross-margin', to: 'net-margin' },
         { from: 'cash-vs-profit', to: 'runway', locked: true },
-        { from: 'net-margin', to: 'runway', locked: true },
       ],
     },
     tasks: [
@@ -191,7 +280,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
           netMarginPct: 4.3,
         },
         evalNote:
-          'Revenue = card charges + memberships. COGS = injectables, retail product cost, syringes. OpEx = wages, rent, ads, waste. Owner draws aren’t true OpEx but sit outside gross profit — tagging them OpEx keeps them out of COGS. Gross ≈ (24600−8690)/24600 ≈ 64.7%; net after OpEx ≈ 23.5% (draw excluded from “true” net in evalNote — prototype compares tagged math).',
+          'Revenue = card charges + memberships. COGS = injectables, retail product cost, syringes. OpEx = wages, rent, ads, waste. Owner draws aren’t true OpEx but sit outside gross profit — tagging them OpEx keeps them out of COGS. Gross ≈ (24600−8690)/24600 ≈ 64.7%.',
       },
       {
         id: 'task-cash-forecast',
@@ -210,73 +299,107 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         id: 'synth-accrual-cash',
         conceptId: 'cash-vs-profit',
         prompt:
-          'Explain to a tired shop owner: why can the P&L show a profit while payroll still bounces? Use accrual vs cash-flow in words a non-accountant will keep.',
-        rubricKeywords: [
-          'cash',
-          'profit',
-          'accrual',
-          'invoice',
-          'receivable',
-          'payroll',
-          'collect',
-          'bank',
+          'Explain to a tired shop owner: why can the P&L show a profit while payroll still bounces?',
+        scaffold: [
+          'What does profit count that cash does not?',
+          'Name one way cash leaves without being an expense.',
+          'What would you tell the owner to watch weekly?',
         ],
+        rubricKeywords: ['cash', 'profit', 'accrual', 'invoice', 'receivable', 'payroll', 'collect'],
         passFeedback:
-          'Solid. You separated the story (profit) from the bank (cash). Cards from this explanation are now in your review queue.',
+          'Solid. You separated the story (profit) from the bank (cash). New retrieval items are queued.',
         failFeedback:
-          'Not quite enough signal. Hit both sides: profit can book a sale before cash arrives (invoices/receivables), and cash can leave for inventory, loan principal, or draws without “looking like” an expense on the P&L.',
-        cardsOnPass: [
+          'Hit both sides: profit can book a sale before cash arrives (invoices/receivables), and cash can leave for inventory, loan principal, or draws without “looking like” an expense on the P&L.',
+        itemsOnPass: [
           {
-            id: 'card-accrual-1',
+            id: 'item-accrual-1',
             conceptId: 'cash-vs-profit',
-            front: 'Why can profit be up while the bank balance falls?',
-            back: 'Sales on credit raise accrual profit before cash is collected; cash also leaves for inventory, loan principal, and owner draws that don’t equal “expense” on the P&L.',
+            kind: 'short-answer',
+            prompt: 'Why can profit be up while the bank balance falls?',
+            answer:
+              'Sales on credit raise accrual profit before cash is collected; cash also leaves for inventory, loan principal, and owner draws that don’t equal “expense” on the P&L.',
+            keyPoints: ['sales on credit before cash', 'inventory or loan principal', 'owner draws'],
           },
           {
-            id: 'card-accrual-2',
+            id: 'item-accrual-2',
             conceptId: 'cash-vs-profit',
-            front: 'One sentence: accrual vs cash view',
-            back: 'Accrual asks “did the model work this period?” Cash asks “can we pay people on Friday?”',
+            kind: 'recall',
+            prompt: 'One sentence: accrual vs cash view',
+            answer:
+              'Accrual asks “did the model work this period?” Cash asks “can we pay people on Friday?”',
+            keyPoints: ['did the model work', 'can we pay'],
           },
         ],
       },
       {
         id: 'synth-gross-net',
         conceptId: 'gross-margin',
-        prompt:
-          'Feynman test: teach a new hire the difference between gross margin and net margin using a single product sale example.',
+        prompt: 'Teach a new hire the difference between gross margin and net margin.',
+        scaffold: [
+          'What does gross margin subtract?',
+          'What does net margin add on top of that?',
+          'Give one number example where they disagree.',
+        ],
         rubricKeywords: ['gross', 'net', 'cogs', 'opex', 'overhead', 'margin', 'sale'],
-        passFeedback: 'Clear split between unit economics (gross) and whole-business leftovers (net). Cards queued.',
+        passFeedback: 'Clear split between unit economics and whole-business leftovers. Items queued.',
         failFeedback:
           'Name both: gross = after direct cost of the sale (COGS); net = after operating overhead too. Give a numeric micro-example.',
-        cardsOnPass: [
+        itemsOnPass: [
           {
-            id: 'card-margin-1',
+            id: 'item-margin-1',
             conceptId: 'gross-margin',
-            front: 'Gross margin formula',
-            back: '(Revenue − COGS) / Revenue. What’s left of each sales dollar after direct product/service cost.',
-          },
-          {
-            id: 'card-margin-2',
-            conceptId: 'net-margin',
-            front: 'Net vs gross — one line',
-            back: 'Gross ignores overhead; net is after OpEx (and interest/tax in full statements). A fat gross with a thin net means overhead is eating the business.',
+            kind: 'recall',
+            prompt: 'Gross margin formula',
+            answer: '(Revenue − COGS) / Revenue',
+            keyPoints: ['revenue', 'cogs', 'revenue'],
           },
         ],
       },
     ],
-    srs: [
+    items: hydrateSeeds([
       {
-        id: 'card-seed-gross-net',
+        id: 'item-seed-gross-net',
         conceptId: 'gross-margin',
-        front: 'Gross margin vs net margin (quick)',
-        back: 'Gross = after COGS only. Net = after COGS + operating expenses. High gross + low net ⇒ overhead problem.',
-        ease: 2.5,
-        intervalDays: 1,
-        dueAt: new Date(Date.now() - 3600_000).toISOString(),
-        reps: 0,
+        kind: 'discrimination',
+        prompt: 'A shop has 70% gross margin and 3% net margin. What does that combination tell you?',
+        options: [
+          'Overhead is eating the business',
+          'The product is priced too low',
+          'Cost of goods is out of control',
+        ],
+        correctIndex: 0,
+        explanation:
+          'A fat gross means each sale works. A thin net after that means the fixed cost of running the shop — rent, wages, ads — is where the money goes.',
       },
-    ],
+      {
+        id: 'item-seed-cogs',
+        conceptId: 'cogs-opex',
+        kind: 'application',
+        prompt:
+          'The med-spa buys $600 of syringes used during treatments and pays $1,600 for Instagram ads. Which is COGS, which is OpEx, and why does the split matter?',
+        keyPoints: [
+          'syringes are cogs because they scale with each treatment',
+          'ads are opex because they run regardless of volume',
+          'the split sets gross margin',
+        ],
+        answer:
+          'Syringes scale with each treatment delivered, so they are COGS. Ads run whether or not anyone books, so they are OpEx. The split is what makes gross margin mean anything.',
+      },
+      {
+        id: 'item-seed-revenue',
+        conceptId: 'revenue',
+        kind: 'mcq',
+        prompt: 'Which of these belongs in revenue on a clean P&L?',
+        options: [
+          'Monthly facial membership charges',
+          'A transfer from the owner’s personal account',
+          'A refunded deposit returned to a client',
+        ],
+        correctIndex: 0,
+        explanation:
+          'Memberships are sales. Owner transfers are equity, and refunds reverse a sale rather than creating one.',
+      },
+    ]),
     drills: [
       {
         id: 'drill-npm',
@@ -298,7 +421,8 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
         title: 'Owner draw on the P&L?',
         kind: 'mcq',
         spec: {
-          question: 'An LLC owner transfers $5k from business checking to personal. On a clean P&L this is usually…',
+          question:
+            'An LLC owner transfers $5k from business checking to personal. On a clean P&L this is usually…',
           options: [
             'an operating expense that lowers net margin',
             'an equity/draw — cash out without being “OpEx”',
@@ -311,6 +435,7 @@ export function createFinanceSubject(goal = 'Finance for small businesses'): Sub
       },
     ],
     metrics: emptyMetrics(),
+    progress: emptyProgress(),
   }
-  return attachStudy(subject, financeStudy)
+  return attachStudy(domain, financeStudy)
 }

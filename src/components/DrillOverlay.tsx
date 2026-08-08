@@ -4,11 +4,11 @@ import { checkCalcAnswer, nextCalcQuestion } from '../data/drills'
 import type { McqSpec, RapidCalcSpec } from '../data/types'
 
 export function DrillOverlay() {
-  const { state, activeSubject, dispatch } = useApp()
+  const { state, activeDomain, dispatch } = useApp()
   const [input, setInput] = useState('')
   const [mcqChosen, setMcqChosen] = useState<number | null>(null)
 
-  const drillMeta = activeSubject?.drills.find((d) => d.id === state.drill?.drillId)
+  const drillMeta = activeDomain?.drills.find((d) => d.id === state.drill?.drillId)
 
   useEffect(() => {
     if (!state.drill) return

@@ -3,6 +3,8 @@ import { useApp } from '../state/AppContext'
 import type { BlueprintNode, NodeStatus } from '../data/types'
 import { cleanLabel, generateStudy, studyFor, StudyUnavailableError } from '../data/study'
 import { drillStartPayload } from '../data/drills'
+import { missingItems } from '../data/retrieval'
+import { conceptRetention } from '../data/rank'
 
 const statusLabel = (status: NodeStatus): string => {
   switch (status) {
@@ -39,11 +41,19 @@ function CheckItem({ q, a }: { q: string; a: string }) {
 }
 
 export function ConceptScreen() {
-  const { state, activeSubject, dispatch } = useApp()
+  const { state, activeDomain, dispatch } = useApp()
   const abortRef = useRef<AbortController | null>(null)
 
   const node: BlueprintNode | null =
-    activeSubject?.blueprint.nodes.find((n) => n.id === state.openConceptId) ?? null
+    activeDomain?.blueprint.nodes.find((n) => n.id === state.openConceptId) ?? null
+
+  // Opening a concept is what gives it retrieval items: they are derived from
+  // whatever study content exists, so the Feed has something to schedule.
+  useEffect(() => {
+    if (!activeDomain || !node) return
+    const seeds = missingItems(activeDomain, node)
+    if (seeds.length > 0) dispatch({ type: 'addItems', seeds })
+  }, [activeDomain, node, dispatch])
 
   // Cancel an in-flight generation if we leave the page
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -52,34 +62,42 @@ export function ConceptScreen() {
     window.scrollTo({ top: 0 })
   }, [state.openConceptId])
 
-  if (!activeSubject || !node) {
+  if (!activeDomain || !node) {
     return (
       <main className="content-pane">
         <p className="page-lead">That concept is no longer on this path.</p>
         <button
           type="button"
           className="pill"
-          onClick={() => dispatch({ type: 'setView', view: 'blueprint' })}
+          onClick={() => dispatch({ type: 'setView', view: 'paths' })}
         >
-          ← Back to blueprint
+          ← Back to paths
         </button>
       </main>
     )
   }
 
-  const subject = activeSubject
+  const domain = activeDomain
   const label = cleanLabel(node.label)
-  const study = studyFor(subject, node)
+  const study = studyFor(domain, node)
   const isGenerated = node.study?.source === 'generated'
-  const nodes = subject.blueprint.nodes
-  const index = nodes.findIndex((n) => n.id === node.id)
-  const prev = index > 0 ? nodes[index - 1] : null
-  const next = index >= 0 && index < nodes.length - 1 ? nodes[index + 1] : null
+  const retention = conceptRetention(domain, node.id)
+  // Paging follows the layer the concept sits in, not the whole domain — the
+  // point of layers is that you never wander into depth you have not opened.
+  const layer = domain.paths
+    .find((p) => p.id === node.pathId)
+    ?.layers.find((l) => l.conceptIds.includes(node.id))
+  const siblings = (layer?.conceptIds ?? domain.blueprint.nodes.map((n) => n.id))
+    .map((id) => domain.blueprint.nodes.find((n) => n.id === id))
+    .filter((n): n is BlueprintNode => n !== undefined)
+  const index = siblings.findIndex((n) => n.id === node.id)
+  const prev = index > 0 ? siblings[index - 1] : null
+  const next = index >= 0 && index < siblings.length - 1 ? siblings[index + 1] : null
 
-  const task = node.taskId ? subject.tasks.find((t) => t.id === node.taskId) : undefined
-  const synth = subject.synthPrompts.find((p) => p.conceptId === node.id)
-  const drill = subject.drills.find((d) => d.conceptId === node.id)
-  const cards = subject.srs.filter((c) => c.conceptId === node.id)
+  const task = node.taskId ? domain.tasks.find((t) => t.id === node.taskId) : undefined
+  const synth = domain.synthPrompts.find((p) => p.conceptId === node.id)
+  const drill = domain.drills.find((d) => d.conceptId === node.id)
+  const items = domain.items.filter((i) => i.conceptId === node.id)
 
   const generate = async () => {
     abortRef.current?.abort()
@@ -88,7 +106,7 @@ export function ConceptScreen() {
     dispatch({ type: 'studyLoading' })
     try {
       const generated = await generateStudy({
-        subject,
+        domain,
         node,
         settings: state.settings,
         signal: controller.signal,
@@ -117,8 +135,8 @@ export function ConceptScreen() {
 
   return (
     <main className="content-pane concept-page">
-      <button type="button" className="back-link" onClick={() => dispatch({ type: 'closeConcept' })}>
-        ← Blueprint · {subject.title}
+      <button type="button" className="back-link" onClick={() => dispatch({ type: 'setView', view: 'paths' })}>
+        ← {layer?.title ?? 'Paths'} · {domain.title}
       </button>
 
       <header className="concept-hero">
@@ -133,12 +151,12 @@ export function ConceptScreen() {
             <span className={`path-step-status path-step-status--${node.status}`}>
               {statusLabel(node.status)}
             </span>
-            <span className="tag">{Math.round(node.retention)}% retention</span>
+            <span className="tag">{retention}% recall</span>
           </div>
           <h1 className="concept-title">{label}</h1>
           <p className="concept-tagline">{study.tagline}</p>
           <div className="progress-track" style={{ marginTop: 10 }}>
-            <div className="progress-fill" style={{ width: `${node.retention}%` }} />
+            <div className="progress-fill" style={{ width: `${retention}%` }} />
           </div>
         </div>
       </header>
@@ -276,10 +294,26 @@ export function ConceptScreen() {
               className="pill"
               onClick={() => {
                 dispatch({ type: 'setActiveSynth', id: synth.id })
-                dispatch({ type: 'setView', view: 'synthesis' })
+                dispatch({ type: 'setView', view: 'retrieval' })
               }}
             >
-              Explain it back
+              Teach it back
+            </button>
+          )}
+          {items.length > 0 && (
+            <button
+              type="button"
+              className="pill"
+              onClick={() =>
+                dispatch({
+                  type: 'startRetrieval',
+                  cardId: `concept-${node.id}`,
+                  itemIds: items.slice(0, 5).map((i) => i.id),
+                  conceptId: node.id,
+                })
+              }
+            >
+              Retrieve now
             </button>
           )}
           {drill && (
@@ -291,16 +325,17 @@ export function ConceptScreen() {
               Drill: {drill.title}
             </button>
           )}
-          {!task && !synth && !drill && (
+          {!task && !synth && !drill && items.length === 0 && (
             <p className="card-sub">
-              No practice wired to this concept yet — study it, then drill a neighbouring node on
-              Dashboard.
+              No practice wired to this concept yet — generate the deep-dive above and retrieval
+              items are derived from it.
             </p>
           )}
         </div>
-        {cards.length > 0 && (
+        {items.length > 0 && (
           <p className="card-hint">
-            {cards.length} review card{cards.length === 1 ? '' : 's'} in your queue for this concept.
+            {items.length} retrieval item{items.length === 1 ? '' : 's'} on this concept feeding your
+            schedule.
           </p>
         )}
       </section>

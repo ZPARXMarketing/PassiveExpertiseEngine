@@ -105,8 +105,8 @@ export default async function handler(req: Request): Promise<Response> {
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': process.env.URL || 'https://expertise-engine.netlify.app',
-        'X-Title': 'Expertise Engine',
+        'HTTP-Referer': process.env.URL || 'https://domain-engine.netlify.app',
+        'X-Title': 'Domain Engine',
       },
       body: JSON.stringify({
         model,

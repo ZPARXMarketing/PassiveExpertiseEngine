@@ -1,11 +1,12 @@
 /**
- * Study-page generator (server-side key path).
+ * Domain mapper (server-side key path).
  *
- * The browser POSTs a concept from a subject's blueprint; this function asks a
- * cheap model through OpenRouter for a structured study page and returns it as
- * JSON. Used only when the site has a server-side key — if the user entered
- * their own OpenRouter key in Settings, the browser calls OpenRouter directly
- * and never touches this function.
+ * The browser POSTs the topic the user typed; this function asks a model through
+ * OpenRouter for the 4–6 broad routes through that domain — pitch and payoff
+ * only, no concepts — and returns them as JSON. Concepts are built later, one
+ * layer at a time, by generate-layer. Used only when the site has a server-side
+ * key; if the user entered their own OpenRouter key in Settings, the browser
+ * calls OpenRouter directly and never touches this.
  *
  * Env:
  *   OPENROUTER_API_KEY  required for this path
@@ -13,13 +14,8 @@
  *   OPENROUTER_BASE_URL optional, default "https://openrouter.ai/api/v1"
  */
 
-import {
-  completionBody,
-  DEFAULT_MODEL,
-  OPENROUTER_BASE_URL,
-  parseCompletionJson,
-  type StudyRequest,
-} from '../../src/data/studyPrompt.ts'
+import { DEFAULT_MODEL, OPENROUTER_BASE_URL, parseCompletionJson } from '../../src/data/studyPrompt.ts'
+import { domainCompletionBody, type DomainRequest } from '../../src/data/domainPrompt.ts'
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
@@ -29,7 +25,7 @@ const json = (body: unknown, status = 200) =>
 
 export default async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
-    return json({ error: 'POST a concept to this endpoint.' }, 405)
+    return json({ error: 'POST a topic to this endpoint.' }, 405)
   }
 
   const apiKey = process.env.OPENROUTER_API_KEY
@@ -43,16 +39,16 @@ export default async function handler(req: Request): Promise<Response> {
     )
   }
 
-  let body: StudyRequest
+  let body: DomainRequest
   try {
-    body = (await req.json()) as StudyRequest
+    body = (await req.json()) as DomainRequest
   } catch {
     return json({ error: 'Invalid JSON body.' }, 400)
   }
 
-  const concept = body.concept?.trim()
-  if (!concept) {
-    return json({ error: 'Missing "concept".' }, 400)
+  const topic = body.topic?.trim()
+  if (!topic) {
+    return json({ error: 'Missing "topic".' }, 400)
   }
 
   const baseUrl = (process.env.OPENROUTER_BASE_URL || OPENROUTER_BASE_URL).replace(/\/$/, '')
@@ -68,7 +64,7 @@ export default async function handler(req: Request): Promise<Response> {
         'HTTP-Referer': process.env.URL || 'https://domain-engine.netlify.app',
         'X-Title': 'Domain Engine',
       },
-      body: JSON.stringify(completionBody({ ...body, concept }, model)),
+      body: JSON.stringify(domainCompletionBody({ topic }, model)),
     })
   } catch {
     return json({ error: 'Could not reach OpenRouter.' }, 502)

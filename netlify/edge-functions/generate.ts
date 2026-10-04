@@ -46,7 +46,7 @@ export default async (req: Request) => {
       headers: {
         'content-type': 'application/json',
         authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': Netlify.env.get('URL') || 'https://passiveexpertise.netlify.app',
+        'HTTP-Referer': Netlify.env.get('URL') || 'https://github.com/ZPARXMarketing/PassiveExpertiseEngine',
         'X-Title': 'Expertise Engine',
       },
       body: JSON.stringify(completionBody(body, model)),

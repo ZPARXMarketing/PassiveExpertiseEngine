@@ -6,9 +6,10 @@
 
 import type { Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
+// Your own Supabase project, set at build time (see .env.example). Unset = this-device mode.
+const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
 // Publishable key: designed to ship in the browser; RLS on the xe_ tables does the gating.
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_WM7N5CYAcW2owXhSc-Q7IQ_5Tv-fTsL'
+const SUPABASE_KEY = (import.meta.env.VITE_SUPABASE_KEY as string | undefined) ?? ''
 
 export interface NewNode {
   parent_id: string | null
@@ -52,6 +53,7 @@ export interface Store {
 /* ---------------- Supabase ---------------- */
 
 async function rest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!SUPABASE_URL || !SUPABASE_KEY) throw new Error('Supabase is not configured')
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...init,
     headers: {

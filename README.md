@@ -2,6 +2,15 @@
 
 Type a subject. Drill down like a university catalog. Read each chapter as it's written for you.
 
+![Drilling from a subject to a chapter](docs/screenshots/02-reader.png)
+
+<p>
+  <img src="docs/screenshots/03-reader-scrolled.png" width="68%" alt="A chapter with an AI-drawn chart">
+  <img src="docs/screenshots/04-mobile.png" width="26%" alt="Phone layout with breadcrumb trail">
+</p>
+
+Open source under the [MIT license](LICENSE). Bring your own [OpenRouter](https://openrouter.ai) key; storage is your own Supabase project, or just your browser.
+
 ```
 Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 ```
@@ -58,7 +67,7 @@ is written in the background while you read.
 
 - Writing: DeepSeek (`deepseek/deepseek-chat`). Fact-checks: `perplexity/sonar`.
 - Lectures: `netlify/edge-functions/speech.ts` (`POST /api/speech`); default voice model `microsoft/mai-voice-2.1-flash` (voice Harper, en-US); any of OpenRouter's speech models can be chosen in Settings, and if the preferred one isn't listed the closest listed one is used. Raw-PCM models are saved as WAV.
-- Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL`, `OPENROUTER_TTS_MODEL` (optional).
+- Site env (see `.env.example`): `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL`, `OPENROUTER_TTS_MODEL` (optional).
 - Or paste a key in **Settings** (⚙) — then that browser calls OpenRouter directly.
 
 ## Password
@@ -71,13 +80,17 @@ password signs every device out; **Settings → Lock this device** signs one out
 
 ## Storage
 
-Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`,
-`xe_visits`, `xe_saved`, `xe_extras`, `xe_prefs` (migrations in `supabase/migrations/`, all applied). This is what syncs
-across devices. The browser uses the
-publishable key; RLS allows read + insert, and delete of whole subjects only.
+Two modes, chosen at startup:
 
-If those tables don't exist yet the app falls back to this device's localStorage (the rail shows
-**this device** instead of **synced**).
+- **Synced** — set `VITE_SUPABASE_URL` and `VITE_SUPABASE_KEY` (your own Supabase project's URL and
+  publishable key; see `.env.example`) and apply `supabase/migrations/` in order. Tables `xe_nodes`,
+  `xe_lessons`, `xe_completions`, `xe_visits`, `xe_saved`, `xe_extras`, `xe_prefs`, plus the public
+  `xe-lectures` storage bucket for lecture audio. RLS allows read + insert, and delete of whole
+  subjects only, for the anon role, so **keep the site behind `APP_PASSWORD`** (or tighten the
+  policies for multi-user use): anyone holding the publishable key can read and write the tables.
+- **This device** — with those variables unset, or the tables missing, everything lives in this
+  browser's localStorage (the rail shows **this device** instead of **synced**). Lecture audio
+  lasts only for the visit in this mode.
 
 ## Run
 

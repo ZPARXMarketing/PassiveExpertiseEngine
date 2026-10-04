@@ -65,3 +65,37 @@ export function chainIds(id: string, have: Record<string, TreeNode>): string[] {
   }
   return out
 }
+
+export interface PracticeProblem {
+  problem: string
+  solution: string
+}
+
+export interface CheckIssue {
+  claim: string
+  problem: string
+  correction: string
+  source: string
+}
+
+export interface CheckResult {
+  verdict: 'ok' | 'issues' | 'fixed'
+  issues: CheckIssue[]
+  sources: string[]
+  checkedAt: string
+}
+
+export type ExtraKind = 'deeper' | 'answer' | 'practice' | 'check' | 'fixed'
+
+/** Study-tool output hung off a chapter. Newest row per (kind, key) wins. */
+export interface Extra {
+  id: string
+  node_id: string
+  kind: ExtraKind
+  key: string
+  body: unknown
+  created_at: string
+}
+
+/** busy / streaming key for one study tool on one chapter */
+export const liveKey = (chapterId: string, kind: string, key: string) => `${chapterId}:${kind}:${key}`

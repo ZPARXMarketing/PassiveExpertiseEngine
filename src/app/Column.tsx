@@ -1,3 +1,4 @@
+import type { RawItem } from './parse.ts'
 import type { SavedItem, Syllabus, TreeNode } from './types.ts'
 
 const HEADINGS: Record<string, string> = {
@@ -6,8 +7,8 @@ const HEADINGS: Record<string, string> = {
   course: 'Syllabus',
 }
 
-/** full panel → compact (titles only, narrower) → strip (slim vertical bar) */
-export type Fold = 'full' | 'compact' | 'strip'
+/** full panel → compact (titles only, narrower) → strip (slim vertical bar); hidden on phones (the trail bar replaces it) */
+export type Fold = 'full' | 'compact' | 'strip' | 'hidden'
 
 interface Props {
   fold: Fold
@@ -15,6 +16,8 @@ interface Props {
   selectedTitle?: string
   parent: TreeNode
   items?: TreeNode[]
+  /** tiles still streaming in (not clickable until saved) */
+  preview?: RawItem[]
   syllabus?: Syllabus
   loading: boolean
   error?: string
@@ -33,6 +36,8 @@ export function Column(props: Props) {
   const isSyllabus = parent.level === 'course'
   const finished = isSyllabus && items ? items.filter((i) => done.has(i.id)).length : 0
   const { fold, onFold } = props
+
+  if (fold === 'hidden') return null
 
   if (fold === 'strip') {
     return (
@@ -88,7 +93,24 @@ export function Column(props: Props) {
         )}
       </header>
 
-      {loading && !items && <Skeleton />}
+      {loading && !items && !props.preview?.length && <Skeleton />}
+      {!items && !!props.preview?.length && (
+        <ol className="tiles">
+          {props.preview.map((n, i) => (
+            <li key={i} className="tile-wrap">
+              <div className="tile preview">
+                <span className="tile-top">
+                  {isSyllabus && <span className="tile-num">{i + 1}</span>}
+                  {n.code && <span className="code">{n.code}</span>}
+                  {n.tier && <span className={`tier tier-${n.tier.toLowerCase()}`}>{n.tier}</span>}
+                </span>
+                <span className="tile-title">{n.title}</span>
+                {n.summary && <span className="tile-sum">{n.summary}</span>}
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
       {error && (
         <div className="error">
           <p>{error}</p>

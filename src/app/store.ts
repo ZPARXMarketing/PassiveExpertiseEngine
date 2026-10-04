@@ -4,7 +4,7 @@
  * migration in supabase/migrations is applied.
  */
 
-import type { Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
+import type { Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
 // Publishable key: designed to ship in the browser; RLS on the xe_ tables does the gating.
@@ -37,6 +37,10 @@ export interface Store {
   saved(): Promise<SavedItem[]>
   addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text'>): Promise<SavedItem>
   removeSaved(id: string): Promise<void>
+  extras(nodeId: string): Promise<Extra[]>
+  addExtra(nodeId: string, kind: ExtraKind, key: string, body: unknown, model: string): Promise<Extra>
+  pref<T>(key: string): Promise<T | null>
+  setPref(key: string, value: unknown): Promise<void>
 }
 
 /* ---------------- Supabase ---------------- */
@@ -119,6 +123,26 @@ const cloud: Store = {
   removeSaved: async (id) => {
     await rest(`xe_saved?id=eq.${id}`, { method: 'DELETE' })
   },
+  extras: (id) => rest<Extra[]>(`xe_extras?node_id=eq.${id}&order=created_at.asc`),
+  addExtra: async (node_id, kind, key, body, model) => {
+    const [row] = await rest<Extra[]>('xe_extras', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify({ node_id, kind, key: key.slice(0, 1000), body, model }),
+    })
+    return row
+  },
+  pref: async <T,>(key: string) => {
+    const rows = await rest<{ value: T }[]>(`xe_prefs?key=eq.${encodeURIComponent(key)}&select=value`)
+    return rows[0]?.value ?? null
+  },
+  setPref: async (key, value) => {
+    await rest('xe_prefs', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+    })
+  },
 }
 
 /* ---------------- this device ---------------- */
@@ -131,6 +155,8 @@ interface LocalData {
   done: string[]
   visits?: Record<string, string>
   saved?: SavedItem[]
+  extras?: Extra[]
+  prefs?: Record<string, unknown>
 }
 
 function load(): LocalData {
@@ -180,6 +206,7 @@ function makeDevice(): Store {
       d.done = d.done.filter((k) => !gone.has(k))
       for (const k of gone) delete visits[k]
       d.saved = saved().filter((x) => !gone.has(x.node_id))
+      d.extras = (d.extras ?? []).filter((x) => !gone.has(x.node_id))
       save(d)
     },
     doc: async <T,>(id: string) => (d.lessons[id] as T) ?? null,
@@ -208,6 +235,18 @@ function makeDevice(): Store {
     },
     removeSaved: async (id) => {
       d.saved = saved().filter((x) => x.id !== id)
+      save(d)
+    },
+    extras: async (id) => (d.extras ?? []).filter((x) => x.node_id === id),
+    addExtra: async (node_id, kind, key, body) => {
+      const row: Extra = { id: crypto.randomUUID(), node_id, kind, key, body, created_at: new Date().toISOString() }
+      ;(d.extras ??= []).push(row)
+      save(d)
+      return row
+    },
+    pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
+    setPref: async (key, value) => {
+      ;(d.prefs ??= {})[key] = value
       save(d)
     },
   }

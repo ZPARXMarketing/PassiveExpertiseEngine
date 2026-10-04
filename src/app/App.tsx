@@ -1,18 +1,73 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { generate, loadSettings, saveSettings, type Settings } from './generate.ts'
-import type { GenKind } from './prompts.ts'
+import type { GenKind, GenRequest } from './prompts.ts'
+import {
+  applyFix,
+  latest,
+  lessonText,
+  parseBranches,
+  parseCheck,
+  parseCourses,
+  parseLesson,
+  parsePractice,
+  parseSections,
+  parseSyllabus,
+  type RawItem,
+} from './parse.ts'
 import { openStore, type NewNode, type Store } from './store.ts'
-import { CHILD_LEVEL, chainIds, type Lesson, type Level, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import {
+  CHILD_LEVEL,
+  chainIds,
+  liveKey,
+  type CheckResult,
+  type Extra,
+  type Lesson,
+  type Level,
+  type SavedItem,
+  type Syllabus,
+  type TreeNode,
+} from './types.ts'
 import { Column, type Fold } from './Column.tsx'
 import { Library } from './Library.tsx'
 import { Reader } from './Reader.tsx'
+import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
 const SUGGESTIONS = ['Economics', 'Banking', 'Organic Chemistry', 'Music Theory', 'Psychology', 'Philosophy']
 
-const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
-const strList = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : [])
+const EMPTY_TOOLS: ToolCtx = {
+  extras: [],
+  live: () => '',
+  busy: () => false,
+  error: () => '',
+  pending: () => [],
+  run: () => {},
+}
+
+/** At most one UI update per animation frame per stream. */
+const pending = new Map<string, () => void>()
+function throttle(id: string, fn: () => void) {
+  const first = !pending.has(id)
+  pending.set(id, fn)
+  if (first)
+    requestAnimationFrame(() => {
+      const f = pending.get(id)
+      pending.delete(id)
+      f?.()
+    })
+}
+
+/** The lesson in the marker format the fix prompt edits. */
+function lessonBlocks(l: Lesson): string {
+  return [
+    `@INTRO\n${l.intro}`,
+    ...l.sections.map((s) => `@SECTION ${s.heading}\n${s.body}`),
+    l.example ? `@EXAMPLE ${l.example.title}\n${l.example.body}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
 
 export default function App() {
   const [store, setStore] = useState<Store | null>(null)
@@ -39,6 +94,12 @@ export default function App() {
   const [saved, setSaved] = useState<SavedItem[]>([])
   /** nodes fetched only for the Library or a resume (not part of any open panel) */
   const [extra, setExtra] = useState<Record<string, TreeNode>>({})
+  /** tiles streaming in before they are saved */
+  const [preview, setPreview] = useState<Record<string, RawItem[] | undefined>>({})
+  /** study-tool output per chapter, and text still being streamed per tool */
+  const [extras, setExtras] = useState<Record<string, Extra[]>>({})
+  const [live, setLive] = useState<Record<string, string>>({})
+  const [studyTools, setStudyTools] = useState(false)
   const inflight = useRef(new Set<string>())
   const columnsRef = useRef<HTMLDivElement>(null)
 
@@ -50,6 +111,7 @@ export default function App() {
         s.visits().catch(() => new Map<string, string>()),
         s.saved().catch(() => []),
       ])
+      setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
       setStore(s)
       setSubjects(subs)
       setDone(comp)
@@ -88,7 +150,7 @@ export default function App() {
   useEffect(() => {
     const el = columnsRef.current
     if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
-  }, [path, kids])
+  }, [path, kids, width])
 
   const run = useCallback(async (id: string, job: () => Promise<void>) => {
     if (inflight.current.has(id)) return
@@ -105,7 +167,7 @@ export default function App() {
     }
   }, [])
 
-  /** Children of a node: from the store, or generated once and saved. */
+  /** Children of a node: from the store, or generated once (streamed into preview tiles) and saved. */
   const ensureChildren = useCallback(
     (node: TreeNode, trail: string[]) =>
       run(node.id, async () => {
@@ -113,40 +175,49 @@ export default function App() {
         let list = await store.children(node.id)
         let syllabus = node.level === 'course' ? await store.doc<Syllabus>(node.id) : null
         if (!list.length) {
-          const data = await generate({ kind: GEN_KIND[node.level]!, trail }, settings)
-          const items = Array.isArray(data.items) ? (data.items as Record<string, unknown>[]) : []
-          const rows: NewNode[] = items
-            .map((it, i) => ({
-              parent_id: node.id,
-              level: CHILD_LEVEL[node.level]!,
-              title: str(it.title).slice(0, 200),
-              summary: str(it.summary).slice(0, 2000),
-              meta: node.level === 'branch' ? { code: str(it.code), tier: str(it.tier) } : {},
-              position: i,
-            }))
-            .filter((r) => r.title)
+          const kind = GEN_KIND[node.level]!
+          const parse = (t: string, complete: boolean): RawItem[] =>
+            kind === 'branches' ? parseBranches(t, complete) : kind === 'courses' ? parseCourses(t, complete) : parseSyllabus(t, complete).items
+          const { text, model } = await generate({ kind, trail }, settings, (t) =>
+            throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: parse(t, false) }))),
+          )
+          const rows: NewNode[] = parse(text, true).map((it, i) => ({
+            parent_id: node.id,
+            level: CHILD_LEVEL[node.level]!,
+            title: it.title.slice(0, 200),
+            summary: it.summary.slice(0, 2000),
+            meta: node.level === 'branch' ? { code: it.code ?? '', tier: it.tier ?? '' } : {},
+            position: i,
+          }))
           if (!rows.length) throw new Error('The model returned nothing usable. Try again.')
           list = await store.addNodes(rows)
           if (node.level === 'course') {
-            syllabus = { description: str(data.description), objectives: strList(data.objectives) }
-            await store.saveDoc(node.id, syllabus, data.model)
+            const { description, objectives } = parseSyllabus(text, true)
+            syllabus = { description, objectives }
+            await store.saveDoc(node.id, syllabus, model)
           }
         }
         setKids((k) => ({ ...k, [node.id]: list }))
+        setPreview((p) => ({ ...p, [node.id]: undefined }))
         if (syllabus) setDocs((d) => ({ ...d, [node.id]: syllabus }))
       }),
     [run, store, settings],
   )
 
-  /** A chapter's text: from the store, or written once and saved. */
+  /**
+   * A chapter's text: from the store, or written once (streamed onto the page) and saved.
+   * After a chapter the learner opened, the next one is written in the background.
+   */
   const ensureLesson = useCallback(
-    (chapter: TreeNode, trail: string[], siblings: TreeNode[]) =>
+    (chapter: TreeNode, trail: string[], siblings: TreeNode[], prefetchNext = false): Promise<void> =>
       run(chapter.id, async () => {
         if (!store) return
-        let lesson = await store.doc<Lesson>(chapter.id)
+        const [stored, ex] = await Promise.all([store.doc<Lesson>(chapter.id), store.extras(chapter.id).catch(() => [])])
+        setExtras((e) => ({ ...e, [chapter.id]: ex }))
+        let lesson = stored
+        if (!siblings.length && chapter.parent_id) siblings = await store.children(chapter.parent_id)
         if (!lesson) {
-          if (!siblings.length && chapter.parent_id) siblings = await store.children(chapter.parent_id)
-          const data = await generate(
+          const { text, model } = await generate(
             {
               kind: 'chapter',
               trail,
@@ -158,29 +229,82 @@ export default function App() {
               },
             },
             settings,
+            (t) => throttle(`lesson:${chapter.id}`, () => setDocs((d) => ({ ...d, [chapter.id]: parseLesson(t) }))),
           )
-          const ex = data.example as { title?: unknown; body?: unknown } | null
-          lesson = {
-            intro: str(data.intro),
-            sections: (Array.isArray(data.sections) ? (data.sections as Record<string, unknown>[]) : [])
-              .map((s) => ({ heading: str(s.heading), body: str(s.body) }))
-              .filter((s) => s.body),
-            example: ex && str(ex.body) ? { title: str(ex.title), body: str(ex.body) } : null,
-            keyTerms: (Array.isArray(data.keyTerms) ? (data.keyTerms as Record<string, unknown>[]) : [])
-              .map((t) => ({ term: str(t.term), definition: str(t.definition) }))
-              .filter((t) => t.term),
-            recap: strList(data.recap),
-            quiz: (Array.isArray(data.quiz) ? (data.quiz as Record<string, unknown>[]) : [])
-              .map((q) => ({ q: str(q.q), a: str(q.a) }))
-              .filter((q) => q.q),
-          }
+          lesson = parseLesson(text)
           if (!lesson.sections.length) throw new Error('The chapter came back empty. Try again.')
-          await store.saveDoc(chapter.id, lesson, data.model)
+          await store.saveDoc(chapter.id, lesson, model)
         }
         setDocs((d) => ({ ...d, [chapter.id]: lesson }))
+        if (prefetchNext) {
+          const next = siblings[siblings.findIndex((s) => s.id === chapter.id) + 1]
+          if (next) void ensureLessonRef.current(next, trail, siblings)
+        }
       }),
     [run, store, settings],
   )
+  const ensureLessonRef = useRef(ensureLesson)
+  ensureLessonRef.current = ensureLesson
+
+  /** Study tools: generate once, stream while writing, save under the chapter. */
+  const runExtra = useCallback(
+    (chapter: TreeNode, kind: 'deeper' | 'answer' | 'practice' | 'factcheck', key: string, extraReq: Partial<GenRequest>) => {
+      const id = liveKey(chapter.id, kind, key)
+      return run(id, async () => {
+        if (!store) return
+        const trail = chainIds(chapter.id, known).slice(0, 3).map((x) => known[x]?.title ?? '')
+        const { text, model } = await generate(
+          {
+            kind,
+            trail: trail.filter(Boolean).length ? trail.filter(Boolean) : [chapter.title],
+            chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
+            ...extraReq,
+          },
+          settings,
+          (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
+        )
+        const body =
+          kind === 'deeper'
+            ? { sections: parseSections(text) }
+            : kind === 'practice'
+              ? { problems: parsePractice(text) }
+              : kind === 'answer'
+                ? { question: key, text: text.trim() }
+                : parseCheck(text)
+        const row = await store.addExtra(chapter.id, kind === 'factcheck' ? 'check' : kind, key, body, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
+        setLive((l) => ({ ...l, [id]: '' }))
+      })
+    },
+    [run, store, settings, known],
+  )
+
+  /** Rewrite only the flagged parts using the fact-check's corrections. */
+  const fixChapter = useCallback(
+    (chapter: TreeNode, lesson: Lesson, check: CheckResult) =>
+      run(liveKey(chapter.id, 'fix', ''), async () => {
+        if (!store) return
+        const trail = chainIds(chapter.id, known).slice(0, 3).map((x) => known[x]?.title ?? '').filter(Boolean)
+        const issues = check.issues
+          .map((i, n) => `${n + 1}. Claim: ${i.claim}\n   Problem: ${i.problem}\n   Correction: ${i.correction}`)
+          .join('\n')
+        const { text, model } = await generate(
+          { kind: 'fix', trail: trail.length ? trail : [chapter.title], context: lessonBlocks(lesson), issues },
+          settings,
+        )
+        const fixed = applyFix(lesson, text)
+        const a = await store.addExtra(chapter.id, 'fixed', '', fixed, model)
+        const b = await store.addExtra(chapter.id, 'check', '', { ...check, verdict: 'fixed', checkedAt: new Date().toISOString() }, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), a, b] }))
+      }),
+    [run, store, settings, known],
+  )
+
+  const toggleStudyTools = () => {
+    const next = !studyTools
+    setStudyTools(next)
+    void store?.setPref('studyTools', next).catch(() => {})
+  }
 
   /** Select a node at its depth; everything to its right closes. */
   const select = useCallback(
@@ -196,7 +320,7 @@ export default function App() {
       void store?.visit(node.id).catch(() => {})
       const trail = next.map((n) => n.title)
       if (node.level === 'chapter') {
-        if (!docs[node.id]) void ensureLesson(node, trail.slice(0, 3), kids[next[2].id] ?? [])
+        if (!docs[node.id]) void ensureLesson(node, trail.slice(0, 3), kids[next[2].id] ?? [], true)
       } else if (!kids[node.id]) {
         void ensureChildren(node, trail)
       }
@@ -319,13 +443,17 @@ export default function App() {
   const autoFolds = useMemo(() => {
     const phone = width < 600
     const avail = width - (width > 900 && !railHidden ? 240 : 0) - (phone ? 24 : 32)
-    const W: Record<Fold, number> = { full: phone ? width - 48 : 300, compact: 210, strip: 48 }
+    const W: Record<Fold, number> = { full: phone ? width - 48 : 300, compact: 210, strip: 48, hidden: -14 }
     const newest = chapter ? Math.min(420, width - 32) : W.full // the reader stretches into whatever is left
     const out: Fold[] = panels.map(() => 'full')
     const total = () => out.reduce((t, f, i) => t + (i === out.length - 1 && !chapter ? newest : W[f]) + 14, chapter ? newest : -14)
     const last = chapter ? out.length : out.length - 1 // the newest panel never folds
     for (let i = 0; i < last && total() > avail; i++) {
-      out[i] = phone ? 'strip' : 'compact'
+      if (phone) {
+        out[i] = 'hidden'
+        continue
+      }
+      out[i] = 'compact'
       if (total() > avail) out[i] = 'strip'
     }
     return out
@@ -339,6 +467,27 @@ export default function App() {
   }
   const chapterSiblings = path[2] ? (kids[path[2].id] ?? []) : []
   const chapterIdx = chapter ? chapterSiblings.findIndex((c) => c.id === chapter.id) : -1
+  const chapterExtras = chapter ? (extras[chapter.id] ?? []) : []
+  /** a fact-check fix is stored as a corrected copy; show it in place of the original */
+  const lesson = chapter
+    ? ((latest(chapterExtras, 'fixed')?.body as Lesson | undefined) ?? (docs[chapter.id] as Lesson | undefined))
+    : undefined
+  const tools: ToolCtx | null =
+    chapter && lesson
+      ? {
+          extras: chapterExtras,
+          live: (kind, key) => live[liveKey(chapter.id, kind, key)] ?? '',
+          busy: (kind, key) => !!busy[liveKey(chapter.id, kind, key)],
+          error: (kind, key) => errors[liveKey(chapter.id, kind, key)] ?? '',
+          pending: (kind) => {
+            const prefix = liveKey(chapter.id, kind, '')
+            return Object.keys(busy)
+              .filter((k) => busy[k] && k.startsWith(prefix))
+              .map((k) => k.slice(prefix.length))
+          },
+          run: (kind, key, req) => void runExtra(chapter, kind, key, { ...req, context: lessonText(lesson) }),
+        }
+      : null
 
   return (
     <div className={`shell ${railOpen ? 'rail-open' : ''} ${railHidden ? 'rail-hidden' : ''} tab-${tab}`}>
@@ -470,6 +619,7 @@ export default function App() {
                     selectedTitle={path[depth + 1]?.title}
                     parent={parent}
                     items={kids[parent.id]}
+                    preview={preview[parent.id]}
                     syllabus={docs[parent.id] as Syllabus | undefined}
                     loading={!!busy[parent.id]}
                     error={errors[parent.id]}
@@ -487,7 +637,7 @@ export default function App() {
                   key={chapter.id}
                   chapter={chapter}
                   course={path[2]}
-                  lesson={docs[chapter.id] as Lesson | undefined}
+                  lesson={lesson}
                   loading={!!busy[chapter.id]}
                   error={errors[chapter.id]}
                   isDone={done.has(chapter.id)}
@@ -501,6 +651,12 @@ export default function App() {
                   isSaved={savedNode.has(chapter.id)}
                   onToggleSave={() => void toggleSave(chapter)}
                   onSaveSnippet={(t) => void saveSnippet(chapter, t)}
+                  studyTools={studyTools}
+                  onToggleStudyTools={toggleStudyTools}
+                  tools={tools ?? EMPTY_TOOLS}
+                  fixing={!!busy[liveKey(chapter.id, 'fix', '')]}
+                  fixError={errors[liveKey(chapter.id, 'fix', '')] ?? ''}
+                  onFix={(check) => lesson && void fixChapter(chapter, lesson, check)}
                 />
               )}
             </>

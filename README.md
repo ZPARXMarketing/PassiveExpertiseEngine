@@ -23,18 +23,34 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
   in catalog order, with search and Courses / Chapters / Highlights filters.
 
+## Study tools
+
+A **Study tools** switch in the reader (off by default, synced across devices) reveals:
+
+- **Go deeper ›** beside each section heading — a sub-lesson opens underneath, and its own
+  sections can go deeper again (3 levels).
+- **Ask a question** about the chapter, and **Practice problems** with hidden worked solutions.
+
+**Fact-check** (always visible once a chapter is written) checks the chapter against the web with
+Perplexity Sonar and shows ✓ Verified or the flagged claims with corrections and sources.
+**Fix these** (asks first) rewrites only the flagged parts; the corrected copy replaces the
+original on screen and the badge becomes ✓ Corrected. Everything is generated once and saved.
+
 ## Generation
 
-DeepSeek through OpenRouter (`deepseek/deepseek-chat` by default). One Netlify function,
-`netlify/functions/generate.mts`, handles every step; prompts live in `src/app/prompts.ts`.
+One streaming edge function, `netlify/edge-functions/generate.ts` (`POST /api/generate`), handles
+every step; prompts and stream parsing live in `src/app/prompts.ts` and `src/app/parse.ts`.
+Text appears while it is written, OpenRouter routes to the fastest provider, and the next chapter
+is written in the background while you read.
 
-- Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL` (optional).
-- Or paste a key in **Settings** (⚙) — then the browser calls OpenRouter directly.
+- Writing: DeepSeek (`deepseek/deepseek-chat`). Fact-checks: `perplexity/sonar`.
+- Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL` (optional).
+- Or paste a key in **Settings** (⚙) — then that browser calls OpenRouter directly.
 
 ## Storage
 
 Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`,
-`xe_visits`, `xe_saved` (migrations in `supabase/migrations/`, both applied). This is what syncs
+`xe_visits`, `xe_saved`, `xe_extras`, `xe_prefs` (migrations in `supabase/migrations/`, all applied). This is what syncs
 across devices. The browser uses the
 publishable key; RLS allows read + insert, and delete of whole subjects only.
 
@@ -46,6 +62,6 @@ If those tables don't exist yet the app falls back to this device's localStorage
 ```bash
 npm install
 npm run dev        # UI only; set a key in Settings to generate
-npx netlify dev    # UI + the generate function
+npx netlify dev    # UI + the streaming generate edge function
 npm run build
 ```

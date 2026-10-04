@@ -1,5 +1,21 @@
-import { useState } from 'react'
-import type { Lesson, TreeNode } from './types.ts'
+import { useEffect, useRef, useState } from 'react'
+import { Star } from './Column.tsx'
+import { paras } from './parse.ts'
+import {
+  AskBox,
+  DeeperChip,
+  FactCheck,
+  LectureChip,
+  LecturePanel,
+  Opener,
+  Practice,
+  SectionVisuals,
+  VisualChip,
+  VisualPanel,
+  Writing,
+  type ToolCtx,
+} from './Study.tsx'
+import type { CheckResult, Lesson, TreeNode } from './types.ts'
 
 interface Props {
   chapter: TreeNode
@@ -15,32 +31,107 @@ interface Props {
   onGo: (n: TreeNode) => void
   onRetry: () => void
   onToggleDone: () => void
+  isSaved: boolean
+  onToggleSave: () => void
+  onSaveSnippet: (text: string) => void
+  studyTools: boolean
+  onToggleStudyTools: () => void
+  tools: ToolCtx
+  fixing: boolean
+  fixError: string
+  onFix: (check: CheckResult) => void
 }
 
-const paras = (text: string) =>
-  text
-    .split(/\n\s*\n/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-
-/** The final, wide panel: one chapter's generated text. */
+/** The final, wide panel: one chapter's text, streamed in as it is written. */
 export function Reader(p: Props) {
-  const { chapter, course, lesson } = p
+  const { chapter, course, lesson, studyTools, tools } = p
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState('')
+  const [flash, setFlash] = useState(false)
+  const [deeper, setDeeper] = useState<Set<string>>(new Set())
+  const [lectures, setLectures] = useState<Set<string>>(new Set())
+  const [visuals, setVisuals] = useState<Set<string>>(new Set())
+  const toggleVisual = (k: string) =>
+    setVisuals((o) => {
+      const n = new Set(o)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+  const toggleLecture = (k: string) =>
+    setLectures((o) => {
+      const n = new Set(o)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+  const writing = p.loading && !!lesson
+
+  // Highlight any text in the chapter → "Save highlight" puts it in the Library.
+  useEffect(() => {
+    const onSel = () => {
+      const sel = document.getSelection()
+      const inside = sel && sel.rangeCount && bodyRef.current?.contains(sel.anchorNode)
+      setSelection(inside ? sel.toString().trim() : '')
+    }
+    document.addEventListener('selectionchange', onSel)
+    return () => document.removeEventListener('selectionchange', onSel)
+  }, [])
+
+  const saveSelection = () => {
+    p.onSaveSnippet(selection)
+    document.getSelection()?.removeAllRanges()
+    setSelection('')
+    setFlash(true)
+    setTimeout(() => setFlash(false), 1600)
+  }
+
+  const toggleDeeper = (h: string) =>
+    setDeeper((o) => {
+      const n = new Set(o)
+      if (n.has(h)) n.delete(h)
+      else n.add(h)
+      return n
+    })
+
   return (
     <article className="column reader">
+      {selection.length > 2 && (
+        <button className="snip-btn" onMouseDown={(e) => e.preventDefault()} onClick={saveSelection}>
+          ★ Save highlight
+        </button>
+      )}
+      {flash && <div className="snip-flash">Saved to Library</div>}
       <header className="column-head">
         <span className="column-kicker">
           {course.meta.code || course.title} · Chapter {p.index + 1} of {p.total}
         </span>
-        <h2>{chapter.title}</h2>
+        <h2>
+          {chapter.title}
+          <Star on={p.isSaved} onClick={p.onToggleSave} label="chapter" />
+        </h2>
         {chapter.summary && <p className="column-desc">{chapter.summary}</p>}
+        {lesson && !p.loading && (
+          <div className="reader-tools">
+            <label className={`switch ${studyTools ? 'on' : ''}`}>
+              <input type="checkbox" checked={studyTools} onChange={p.onToggleStudyTools} />
+              <span className="switch-track">
+                <span className="switch-knob" />
+              </span>
+              Study tools
+            </label>
+            {studyTools && (
+              <button className={`check-btn ${lectures.has('') ? 'on' : ''}`} onClick={() => toggleLecture('')} aria-expanded={lectures.has('')}>
+                🎧 Lecture
+              </button>
+            )}
+            <FactCheck ctx={tools} fixing={p.fixing} fixError={p.fixError} onFix={p.onFix} />
+          </div>
+        )}
+        {studyTools && lectures.has('') && lesson && !p.loading && <LecturePanel ctx={tools} section="" />}
       </header>
 
-      {p.loading && !lesson && (
-        <div className="writing">
-          <span className="pulse" /> Writing this chapter…
-        </div>
-      )}
+      {p.loading && !lesson && <Writing label="Writing this chapter…" />}
       {p.error && (
         <div className="error">
           <p>{p.error}</p>
@@ -51,7 +142,7 @@ export function Reader(p: Props) {
       )}
 
       {lesson && (
-        <div className="lesson">
+        <div className={`lesson ${writing ? 'is-writing' : ''}`} ref={bodyRef}>
           {paras(lesson.intro).map((t) => (
             <p key={t} className="lead">
               {t}
@@ -60,10 +151,23 @@ export function Reader(p: Props) {
 
           {lesson.sections.map((s) => (
             <section key={s.heading}>
-              <h3>{s.heading}</h3>
+              <h3>
+                {s.heading}
+                {studyTools && !writing && (
+                  <span className="chips-inline">
+                    <DeeperChip open={deeper.has(s.heading)} onClick={() => toggleDeeper(s.heading)} />
+                    <LectureChip open={lectures.has(s.heading)} onClick={() => toggleLecture(s.heading)} />
+                    <VisualChip open={visuals.has(s.heading)} onClick={() => toggleVisual(s.heading)} />
+                  </span>
+                )}
+              </h3>
+              {lectures.has(s.heading) && <LecturePanel ctx={tools} section={s.heading} />}
+              {studyTools && visuals.has(s.heading) && <VisualPanel ctx={tools} section={s.heading} />}
               {paras(s.body).map((t) => (
                 <p key={t}>{t}</p>
               ))}
+              <SectionVisuals ctx={tools} section={s.heading} editable={studyTools} />
+              {deeper.has(s.heading) && <Opener ctx={tools} focus={[s.heading]} studyTools={studyTools} />}
             </section>
           ))}
 
@@ -110,17 +214,28 @@ export function Reader(p: Props) {
             </section>
           )}
 
-          <footer className="reader-foot">
-            <button className="btn-ghost" disabled={!p.prev} onClick={() => p.prev && p.onGo(p.prev)}>
-              ← Previous
-            </button>
-            <button className={p.isDone ? 'btn-ghost done' : 'btn-neon'} onClick={p.onToggleDone}>
-              {p.isDone ? '✓ Completed' : 'Mark complete'}
-            </button>
-            <button className="btn-ghost" disabled={!p.next} onClick={() => p.next && p.onGo(p.next)}>
-              Next →
-            </button>
-          </footer>
+          {writing && <Writing label="Writing…" />}
+
+          {studyTools && !writing && (
+            <>
+              <AskBox ctx={tools} />
+              <Practice ctx={tools} />
+            </>
+          )}
+
+          {!writing && (
+            <footer className="reader-foot">
+              <button className="btn-ghost" disabled={!p.prev} onClick={() => p.prev && p.onGo(p.prev)}>
+                ← Previous
+              </button>
+              <button className={p.isDone ? 'btn-ghost done' : 'btn-neon'} onClick={p.onToggleDone}>
+                {p.isDone ? '✓ Completed' : 'Mark complete'}
+              </button>
+              <button className="btn-ghost" disabled={!p.next} onClick={() => p.next && p.onGo(p.next)}>
+                Next →
+              </button>
+            </footer>
+          )}
         </div>
       )}
     </article>

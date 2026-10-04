@@ -4,7 +4,7 @@
  * migration in supabase/migrations is applied.
  */
 
-import type { Level, NodeMeta, TreeNode } from './types.ts'
+import type { Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
 // Publishable key: designed to ship in the browser; RLS on the xe_ tables does the gating.
@@ -30,6 +30,22 @@ export interface Store {
   saveDoc(nodeId: string, body: unknown, model: string): Promise<void>
   completions(): Promise<Set<string>>
   setComplete(nodeId: string, done: boolean): Promise<void>
+  nodesById(ids: string[]): Promise<TreeNode[]>
+  /** node id → last opened (ISO) */
+  visits(): Promise<Map<string, string>>
+  visit(nodeId: string): Promise<void>
+  saved(): Promise<SavedItem[]>
+  addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text'>): Promise<SavedItem>
+  removeSaved(id: string): Promise<void>
+  extras(nodeId: string): Promise<Extra[]>
+  addExtra(nodeId: string, kind: ExtraKind, key: string, body: unknown, model: string): Promise<Extra>
+  /** every extra of one kind, across all chapters (Library) */
+  extrasOfKind(kind: ExtraKind): Promise<Extra[]>
+  removeExtra(id: string): Promise<void>
+  /** store an MP3, return a URL any device can play */
+  uploadAudio(path: string, audio: Blob): Promise<string>
+  pref<T>(key: string): Promise<T | null>
+  setPref(key: string, value: unknown): Promise<void>
 }
 
 /* ---------------- Supabase ---------------- */
@@ -88,6 +104,63 @@ const cloud: Store = {
       await rest(`xe_completions?node_id=eq.${id}`, { method: 'DELETE' })
     }
   },
+  nodesById: (ids) => (ids.length ? rest<TreeNode[]>(`xe_nodes?id=in.(${ids.join(',')})`) : Promise.resolve([])),
+  visits: async () => {
+    const rows = await rest<{ node_id: string; visited_at: string }[]>('xe_visits?select=node_id,visited_at')
+    return new Map(rows.map((r) => [r.node_id, r.visited_at]))
+  },
+  visit: async (id) => {
+    await rest('xe_visits', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ node_id: id, visited_at: new Date().toISOString() }),
+    })
+  },
+  saved: () => rest<SavedItem[]>('xe_saved?order=created_at.asc'),
+  addSaved: async (item) => {
+    const [row] = await rest<SavedItem[]>('xe_saved', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify(item),
+    })
+    return row
+  },
+  removeSaved: async (id) => {
+    await rest(`xe_saved?id=eq.${id}`, { method: 'DELETE' })
+  },
+  extras: (id) => rest<Extra[]>(`xe_extras?node_id=eq.${id}&order=created_at.asc`),
+  addExtra: async (node_id, kind, key, body, model) => {
+    const [row] = await rest<Extra[]>('xe_extras', {
+      method: 'POST',
+      headers: { prefer: 'return=representation' },
+      body: JSON.stringify({ node_id, kind, key: key.slice(0, 1000), body, model }),
+    })
+    return row
+  },
+  extrasOfKind: (kind) => rest<Extra[]>(`xe_extras?kind=eq.${kind}&order=created_at.asc`),
+  removeExtra: async (id) => {
+    await rest(`xe_extras?id=eq.${id}`, { method: 'DELETE' })
+  },
+  uploadAudio: async (path, audio) => {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/xe-lectures/${path}`, {
+      method: 'POST',
+      headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}`, 'content-type': 'audio/mpeg' },
+      body: audio,
+    })
+    if (!res.ok) throw new Error(`Could not save the audio (${res.status}).`)
+    return `${SUPABASE_URL}/storage/v1/object/public/xe-lectures/${path}`
+  },
+  pref: async <T,>(key: string) => {
+    const rows = await rest<{ value: T }[]>(`xe_prefs?key=eq.${encodeURIComponent(key)}&select=value`)
+    return rows[0]?.value ?? null
+  },
+  setPref: async (key, value) => {
+    await rest('xe_prefs', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
+    })
+  },
 }
 
 /* ---------------- this device ---------------- */
@@ -98,6 +171,10 @@ interface LocalData {
   nodes: TreeNode[]
   lessons: Record<string, unknown>
   done: string[]
+  visits?: Record<string, string>
+  saved?: SavedItem[]
+  extras?: Extra[]
+  prefs?: Record<string, unknown>
 }
 
 function load(): LocalData {
@@ -120,6 +197,8 @@ function save(d: LocalData) {
 
 function makeDevice(): Store {
   const d = load()
+  const visits = (d.visits ??= {})
+  const saved = () => (d.saved ??= [])
   return {
     mode: 'device',
     subjects: async () =>
@@ -143,6 +222,9 @@ function makeDevice(): Store {
       d.nodes = d.nodes.filter((n) => !gone.has(n.id))
       for (const k of gone) delete d.lessons[k]
       d.done = d.done.filter((k) => !gone.has(k))
+      for (const k of gone) delete visits[k]
+      d.saved = saved().filter((x) => !gone.has(x.node_id))
+      d.extras = (d.extras ?? []).filter((x) => !gone.has(x.node_id))
       save(d)
     },
     doc: async <T,>(id: string) => (d.lessons[id] as T) ?? null,
@@ -154,6 +236,42 @@ function makeDevice(): Store {
     setComplete: async (id, done) => {
       d.done = d.done.filter((k) => k !== id)
       if (done) d.done.push(id)
+      save(d)
+    },
+    nodesById: async (ids) => d.nodes.filter((n) => ids.includes(n.id)),
+    visits: async () => new Map(Object.entries(visits)),
+    visit: async (id) => {
+      visits[id] = new Date().toISOString()
+      save(d)
+    },
+    saved: async () => [...saved()],
+    addSaved: async (item) => {
+      const row = { ...item, id: crypto.randomUUID(), created_at: new Date().toISOString() }
+      saved().push(row)
+      save(d)
+      return row
+    },
+    removeSaved: async (id) => {
+      d.saved = saved().filter((x) => x.id !== id)
+      save(d)
+    },
+    extras: async (id) => (d.extras ?? []).filter((x) => x.node_id === id),
+    addExtra: async (node_id, kind, key, body) => {
+      const row: Extra = { id: crypto.randomUUID(), node_id, kind, key, body, created_at: new Date().toISOString() }
+      ;(d.extras ??= []).push(row)
+      save(d)
+      return row
+    },
+    extrasOfKind: async (kind) => (d.extras ?? []).filter((x) => x.kind === kind),
+    removeExtra: async (id) => {
+      d.extras = (d.extras ?? []).filter((x) => x.id !== id)
+      save(d)
+    },
+    // this-device mode can't keep audio files; the lecture plays for this visit only
+    uploadAudio: async (_path, audio) => URL.createObjectURL(audio),
+    pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
+    setPref: async (key, value) => {
+      ;(d.prefs ??= {})[key] = value
       save(d)
     },
   }

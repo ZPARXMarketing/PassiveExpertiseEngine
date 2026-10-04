@@ -1,23 +1,89 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { generate, loadSettings, saveSettings, type Settings } from './generate.ts'
-import type { GenKind } from './prompts.ts'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { generate, loadSettings, record, saveSettings, type Settings } from './generate.ts'
+import type { GenKind, GenRequest } from './prompts.ts'
+import {
+  applyFix,
+  parseChart,
+  latest,
+  lessonText,
+  parseBranches,
+  parseCheck,
+  parseCourses,
+  parseLesson,
+  parsePractice,
+  parseSections,
+  parseSyllabus,
+  type RawItem,
+} from './parse.ts'
 import { openStore, type NewNode, type Store } from './store.ts'
-import { CHILD_LEVEL, type Lesson, type Level, type Syllabus, type TreeNode } from './types.ts'
-import { Column } from './Column.tsx'
+import {
+  CHILD_LEVEL,
+  chainIds,
+  liveKey,
+  type CheckResult,
+  type Extra,
+  type Lesson,
+  type LectureBody,
+  type Level,
+  type Teacher,
+  type SavedItem,
+  type Syllabus,
+  type TreeNode,
+} from './types.ts'
+import { Column, type Fold } from './Column.tsx'
+import { Library } from './Library.tsx'
 import { Reader } from './Reader.tsx'
+import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
 const SUGGESTIONS = ['Economics', 'Banking', 'Organic Chemistry', 'Music Theory', 'Psychology', 'Philosophy']
 
-const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
-const strList = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : [])
+const EMPTY_TOOLS: ToolCtx = {
+  extras: [],
+  live: () => '',
+  busy: () => false,
+  error: () => '',
+  pending: () => [],
+  run: () => {},
+  lecture: () => {},
+  remove: () => {},
+  teacher: { voice: 'sage', style: 'professor', speed: 1 },
+}
+
+/** At most one UI update per animation frame per stream. */
+const pending = new Map<string, () => void>()
+function throttle(id: string, fn: () => void) {
+  const first = !pending.has(id)
+  pending.set(id, fn)
+  if (first)
+    requestAnimationFrame(() => {
+      const f = pending.get(id)
+      pending.delete(id)
+      f?.()
+    })
+}
+
+/** The lesson in the marker format the fix prompt edits. */
+function lessonBlocks(l: Lesson): string {
+  return [
+    `@INTRO\n${l.intro}`,
+    ...l.sections.map((s) => `@SECTION ${s.heading}\n${s.body}`),
+    l.example ? `@EXAMPLE ${l.example.title}\n${l.example.body}` : '',
+  ]
+    .filter(Boolean)
+    .join('\n\n')
+}
 
 export default function App() {
   const [store, setStore] = useState<Store | null>(null)
   const [settings, setSettings] = useState<Settings>(loadSettings)
   const [showSettings, setShowSettings] = useState(false)
   const [railOpen, setRailOpen] = useState(false)
+  const [railHidden, setRailHidden] = useState(false)
+  const width = useWidth()
+  /** manual fold per panel (keyed by its parent id); cleared on each new selection */
+  const [folds, setFolds] = useState<Record<string, Fold>>({})
   const [topic, setTopic] = useState('')
 
   const [subjects, setSubjects] = useState<TreeNode[]>([])
@@ -28,22 +94,74 @@ export default function App() {
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
+  const [tab, setTab] = useState<'explore' | 'library'>('explore')
+  /** node id → last opened; drives the "explored" colour and resume-where-you-left-off */
+  const [visited, setVisited] = useState<Map<string, string>>(new Map())
+  const [saved, setSaved] = useState<SavedItem[]>([])
+  /** nodes fetched only for the Library or a resume (not part of any open panel) */
+  const [extra, setExtra] = useState<Record<string, TreeNode>>({})
+  /** tiles streaming in before they are saved */
+  const [preview, setPreview] = useState<Record<string, RawItem[] | undefined>>({})
+  /** study-tool output per chapter, and text still being streamed per tool */
+  const [extras, setExtras] = useState<Record<string, Extra[]>>({})
+  const [live, setLive] = useState<Record<string, string>>({})
+  const [studyTools, setStudyTools] = useState(false)
+  const [teacher, setTeacher] = useState<Teacher>({ voice: 'sage', style: 'professor', speed: 1 })
+  /** every lecture, for the Library (loaded when it opens) */
+  const [lectures, setLectures] = useState<Extra[]>([])
   const inflight = useRef(new Set<string>())
   const columnsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     openStore().then(async (s) => {
+      const [subs, comp, vis, sav] = await Promise.all([
+        s.subjects().catch(() => []),
+        s.completions().catch(() => new Set<string>()),
+        s.visits().catch(() => new Map<string, string>()),
+        s.saved().catch(() => []),
+      ])
+      setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
+      const t = await s.pref<Teacher>('teacher').catch(() => null)
+      if (t) setTeacher((cur) => ({ ...cur, ...t }))
       setStore(s)
-      setSubjects(await s.subjects().catch(() => []))
-      setDone(await s.completions().catch(() => new Set<string>()))
+      setSubjects(subs)
+      setDone(comp)
+      setVisited(vis)
+      setSaved(sav)
     })
   }, [])
+
+  /** Every node we hold, by id. */
+  const known = useMemo(() => {
+    const m: Record<string, TreeNode> = { ...extra }
+    for (const n of subjects) m[n.id] = n
+    for (const list of Object.values(kids)) for (const n of list) m[n.id] = n
+    for (const n of path) m[n.id] = n
+    return m
+  }, [extra, subjects, kids, path])
+
+  /** Fetch whatever ancestors of these ids we don't hold yet (at most 3 hops up). */
+  const loadAncestors = useCallback(
+    async (ids: string[]) => {
+      if (!store) return known
+      const have = { ...known }
+      let want = ids.filter((id) => !have[id])
+      for (let hop = 0; hop < 4; hop++) {
+        if (want.length) for (const n of await store.nodesById(want)) have[n.id] = n
+        want = [...new Set(ids.flatMap((id) => chainIds(id, have)))].filter((id) => !have[id])
+        if (!want.length) break
+      }
+      setExtra((e) => ({ ...e, ...have }))
+      return have
+    },
+    [store, known],
+  )
 
   // Each new panel slides in from the right; keep the newest one in view.
   useEffect(() => {
     const el = columnsRef.current
     if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
-  }, [path, kids])
+  }, [path, kids, width])
 
   const run = useCallback(async (id: string, job: () => Promise<void>) => {
     if (inflight.current.has(id)) return
@@ -60,7 +178,7 @@ export default function App() {
     }
   }, [])
 
-  /** Children of a node: from the store, or generated once and saved. */
+  /** Children of a node: from the store, or generated once (streamed into preview tiles) and saved. */
   const ensureChildren = useCallback(
     (node: TreeNode, trail: string[]) =>
       run(node.id, async () => {
@@ -68,39 +186,49 @@ export default function App() {
         let list = await store.children(node.id)
         let syllabus = node.level === 'course' ? await store.doc<Syllabus>(node.id) : null
         if (!list.length) {
-          const data = await generate({ kind: GEN_KIND[node.level]!, trail }, settings)
-          const items = Array.isArray(data.items) ? (data.items as Record<string, unknown>[]) : []
-          const rows: NewNode[] = items
-            .map((it, i) => ({
-              parent_id: node.id,
-              level: CHILD_LEVEL[node.level]!,
-              title: str(it.title).slice(0, 200),
-              summary: str(it.summary).slice(0, 2000),
-              meta: node.level === 'branch' ? { code: str(it.code), tier: str(it.tier) } : {},
-              position: i,
-            }))
-            .filter((r) => r.title)
+          const kind = GEN_KIND[node.level]!
+          const parse = (t: string, complete: boolean): RawItem[] =>
+            kind === 'branches' ? parseBranches(t, complete) : kind === 'courses' ? parseCourses(t, complete) : parseSyllabus(t, complete).items
+          const { text, model } = await generate({ kind, trail }, settings, (t) =>
+            throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: parse(t, false) }))),
+          )
+          const rows: NewNode[] = parse(text, true).map((it, i) => ({
+            parent_id: node.id,
+            level: CHILD_LEVEL[node.level]!,
+            title: it.title.slice(0, 200),
+            summary: it.summary.slice(0, 2000),
+            meta: node.level === 'branch' ? { code: it.code ?? '', tier: it.tier ?? '' } : {},
+            position: i,
+          }))
           if (!rows.length) throw new Error('The model returned nothing usable. Try again.')
           list = await store.addNodes(rows)
           if (node.level === 'course') {
-            syllabus = { description: str(data.description), objectives: strList(data.objectives) }
-            await store.saveDoc(node.id, syllabus, data.model)
+            const { description, objectives } = parseSyllabus(text, true)
+            syllabus = { description, objectives }
+            await store.saveDoc(node.id, syllabus, model)
           }
         }
         setKids((k) => ({ ...k, [node.id]: list }))
+        setPreview((p) => ({ ...p, [node.id]: undefined }))
         if (syllabus) setDocs((d) => ({ ...d, [node.id]: syllabus }))
       }),
     [run, store, settings],
   )
 
-  /** A chapter's text: from the store, or written once and saved. */
+  /**
+   * A chapter's text: from the store, or written once (streamed onto the page) and saved.
+   * After a chapter the learner opened, the next one is written in the background.
+   */
   const ensureLesson = useCallback(
-    (chapter: TreeNode, trail: string[], siblings: TreeNode[]) =>
+    (chapter: TreeNode, trail: string[], siblings: TreeNode[], prefetchNext = false): Promise<void> =>
       run(chapter.id, async () => {
         if (!store) return
-        let lesson = await store.doc<Lesson>(chapter.id)
+        const [stored, ex] = await Promise.all([store.doc<Lesson>(chapter.id), store.extras(chapter.id).catch(() => [])])
+        setExtras((e) => ({ ...e, [chapter.id]: ex }))
+        let lesson = stored
+        if (!siblings.length && chapter.parent_id) siblings = await store.children(chapter.parent_id)
         if (!lesson) {
-          const data = await generate(
+          const { text, model } = await generate(
             {
               kind: 'chapter',
               trail,
@@ -112,29 +240,143 @@ export default function App() {
               },
             },
             settings,
+            (t) => throttle(`lesson:${chapter.id}`, () => setDocs((d) => ({ ...d, [chapter.id]: parseLesson(t) }))),
           )
-          const ex = data.example as { title?: unknown; body?: unknown } | null
-          lesson = {
-            intro: str(data.intro),
-            sections: (Array.isArray(data.sections) ? (data.sections as Record<string, unknown>[]) : [])
-              .map((s) => ({ heading: str(s.heading), body: str(s.body) }))
-              .filter((s) => s.body),
-            example: ex && str(ex.body) ? { title: str(ex.title), body: str(ex.body) } : null,
-            keyTerms: (Array.isArray(data.keyTerms) ? (data.keyTerms as Record<string, unknown>[]) : [])
-              .map((t) => ({ term: str(t.term), definition: str(t.definition) }))
-              .filter((t) => t.term),
-            recap: strList(data.recap),
-            quiz: (Array.isArray(data.quiz) ? (data.quiz as Record<string, unknown>[]) : [])
-              .map((q) => ({ q: str(q.q), a: str(q.a) }))
-              .filter((q) => q.q),
-          }
+          lesson = parseLesson(text)
           if (!lesson.sections.length) throw new Error('The chapter came back empty. Try again.')
-          await store.saveDoc(chapter.id, lesson, data.model)
+          await store.saveDoc(chapter.id, lesson, model)
         }
         setDocs((d) => ({ ...d, [chapter.id]: lesson }))
+        if (prefetchNext) {
+          const next = siblings[siblings.findIndex((s) => s.id === chapter.id) + 1]
+          if (next) void ensureLessonRef.current(next, trail, siblings)
+        }
       }),
     [run, store, settings],
   )
+  const ensureLessonRef = useRef(ensureLesson)
+  ensureLessonRef.current = ensureLesson
+
+  /** Study tools: generate once, stream while writing, save under the chapter. */
+  const runExtra = useCallback(
+    (chapter: TreeNode, kind: 'deeper' | 'answer' | 'practice' | 'factcheck' | 'visual', key: string, extraReq: Partial<GenRequest>) => {
+      const id = liveKey(chapter.id, kind, key)
+      return run(id, async () => {
+        if (!store) return
+        const trail = chainIds(chapter.id, known).slice(0, 3).map((x) => known[x]?.title ?? '')
+        const { text, model } = await generate(
+          {
+            kind,
+            trail: trail.filter(Boolean).length ? trail.filter(Boolean) : [chapter.title],
+            chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
+            ...extraReq,
+          },
+          settings,
+          (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
+        )
+        let body: unknown
+        if (kind === 'visual') {
+          const spec = parseChart(text)
+          if (!spec) throw new Error("Couldn't draw that one. Try again, or describe the chart you want.")
+          body = { ...spec, request: extraReq.question ?? '' }
+        } else if (kind === 'deeper') body = { sections: parseSections(text) }
+        else if (kind === 'practice') body = { problems: parsePractice(text) }
+        else if (kind === 'answer') body = { question: key, text: text.trim() }
+        else body = parseCheck(text)
+        const row = await store.addExtra(chapter.id, kind === 'factcheck' ? 'check' : kind, key, body, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
+        setLive((l) => ({ ...l, [id]: '' }))
+      })
+    },
+    [run, store, settings, known],
+  )
+
+  /** Rewrite only the flagged parts using the fact-check's corrections. */
+  const fixChapter = useCallback(
+    (chapter: TreeNode, lesson: Lesson, check: CheckResult) =>
+      run(liveKey(chapter.id, 'fix', ''), async () => {
+        if (!store) return
+        const trail = chainIds(chapter.id, known).slice(0, 3).map((x) => known[x]?.title ?? '').filter(Boolean)
+        const issues = check.issues
+          .map((i, n) => `${n + 1}. Claim: ${i.claim}\n   Problem: ${i.problem}\n   Correction: ${i.correction}`)
+          .join('\n')
+        const { text, model } = await generate(
+          { kind: 'fix', trail: trail.length ? trail : [chapter.title], context: lessonBlocks(lesson), issues },
+          settings,
+        )
+        const fixed = applyFix(lesson, text)
+        const a = await store.addExtra(chapter.id, 'fixed', '', fixed, model)
+        const b = await store.addExtra(chapter.id, 'check', '', { ...check, verdict: 'fixed', checkedAt: new Date().toISOString() }, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), a, b] }))
+      }),
+    [run, store, settings, known],
+  )
+
+  /** Write a spoken script, record it in the teacher's voice, store the MP3. */
+  const runLecture = useCallback(
+    (chapter: TreeNode, lesson: Lesson, section: string) => {
+      const id = liveKey(chapter.id, 'lecture', section)
+      return run(id, async () => {
+        if (!store) return
+        const chain = chainIds(chapter.id, known).map((x) => known[x]).filter(Boolean)
+        const trail = chain.slice(0, 3).map((n) => n.title)
+        const { text, model } = await generate(
+          {
+            kind: 'lecture',
+            trail: trail.length ? trail : [chapter.title],
+            chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
+            context: lessonText(lesson),
+            focus: section ? [section] : undefined,
+          },
+          settings,
+          (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
+        )
+        const script = text.trim()
+        const prog = liveKey(chapter.id, 'lecture-rec', section)
+        const audio = await record(script, { voice: teacher.voice, style: teacher.style }, settings, (d, n) =>
+          setLive((l) => ({ ...l, [prog]: `${d}/${n}` })),
+        )
+        const slug = (section || 'chapter').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+        const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${Date.now()}.mp3`, audio)
+        const code = chain[2]?.meta.code
+        const body: LectureBody = {
+          script,
+          audioUrl,
+          voice: teacher.voice,
+          style: teacher.style,
+          section,
+          fileName: `${[code, chapter.title, section].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.mp3`,
+        }
+        const row = await store.addExtra(chapter.id, 'lecture', section, body, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
+        setLectures((ls) => [...ls, row])
+        setLive((l) => ({ ...l, [id]: '', [prog]: '' }))
+      })
+    },
+    [run, store, settings, known, teacher],
+  )
+
+  const removeExtra = async (chapter: TreeNode, x: Extra) => {
+    if (!store) return
+    setExtras((e) => ({ ...e, [chapter.id]: (e[chapter.id] ?? []).filter((y) => y.id !== x.id) }))
+    await store.removeExtra(x.id).catch(() => setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), x] })))
+  }
+
+  const saveTeacher = (t: Teacher) => {
+    setTeacher(t)
+    void store?.setPref('teacher', t).catch(() => {})
+  }
+
+  // The Library lists every lecture; fetch them when it opens.
+  useEffect(() => {
+    if (tab === 'library' && store) void store.extrasOfKind('lecture').then(setLectures).catch(() => {})
+  }, [tab, store])
+
+  const toggleStudyTools = () => {
+    const next = !studyTools
+    setStudyTools(next)
+    void store?.setPref('studyTools', next).catch(() => {})
+  }
 
   /** Select a node at its depth; everything to its right closes. */
   const select = useCallback(
@@ -142,15 +384,87 @@ export default function App() {
       const next = [...base.slice(0, depth), node]
       setPath(next)
       setRailOpen(false)
+      setTab('explore')
+      setFolds({})
+      // every click is saved: it colours the trail and lets any device resume here
+      const now = new Date().toISOString()
+      setVisited((v) => new Map(v).set(node.id, now))
+      void store?.visit(node.id).catch(() => {})
       const trail = next.map((n) => n.title)
       if (node.level === 'chapter') {
-        if (!docs[node.id]) void ensureLesson(node, trail.slice(0, 3), kids[next[2].id] ?? [])
+        if (!docs[node.id]) void ensureLesson(node, trail.slice(0, 3), kids[next[2].id] ?? [], true)
       } else if (!kids[node.id]) {
         void ensureChildren(node, trail)
       }
     },
-    [path, docs, kids, ensureChildren, ensureLesson],
+    [path, docs, kids, store, ensureChildren, ensureLesson],
   )
+
+  /** Open a whole chain at once (resume, or "Open" from the Library). */
+  const openChain = useCallback(
+    (chain: TreeNode[]) => {
+      if (!chain.length) return
+      setPath(chain)
+      setTab('explore')
+      setFolds({})
+      chain.forEach((n, i) => {
+        const trail = chain.slice(0, i + 1).map((c) => c.title)
+        if (n.level === 'chapter') {
+          if (!docs[n.id]) void ensureLesson(n, trail.slice(0, 3), kids[n.parent_id ?? ''] ?? [])
+        } else if (!kids[n.id]) {
+          void ensureChildren(n, trail)
+        }
+      })
+    },
+    [docs, kids, ensureChildren, ensureLesson],
+  )
+
+  const openById = useCallback(
+    async (id: string) => {
+      const have = await loadAncestors([id])
+      openChain(chainIds(id, have).map((x) => have[x]).filter(Boolean))
+    },
+    [loadAncestors, openChain],
+  )
+
+  // Resume wherever you (on any device) clicked last.
+  const resumed = useRef(false)
+  useEffect(() => {
+    if (!store || resumed.current) return
+    resumed.current = true
+    const last = [...visited.entries()].sort((a, b) => b[1].localeCompare(a[1]))[0]
+    if (last) void openById(last[0])
+  }, [store, visited, openById])
+
+  const savedNode = useMemo(() => {
+    const m = new Map<string, SavedItem>()
+    for (const x of saved) if (x.kind === 'node') m.set(x.node_id, x)
+    return m
+  }, [saved])
+
+  const toggleSave = async (node: TreeNode) => {
+    if (!store) return
+    const existing = savedNode.get(node.id)
+    if (existing) {
+      setSaved((s) => s.filter((x) => x.id !== existing.id))
+      await store.removeSaved(existing.id).catch(() => setSaved((s) => [...s, existing]))
+    } else {
+      const row = await store.addSaved({ node_id: node.id, kind: 'node', text: '' })
+      setSaved((s) => [...s, row])
+    }
+  }
+
+  const saveSnippet = async (node: TreeNode, text: string) => {
+    if (!store) return
+    const row = await store.addSaved({ node_id: node.id, kind: 'snippet', text: text.slice(0, 4000) })
+    setSaved((s) => [...s, row])
+  }
+
+  const removeSaved = async (item: SavedItem) => {
+    if (!store) return
+    setSaved((s) => s.filter((x) => x.id !== item.id))
+    await store.removeSaved(item.id).catch(() => setSaved((s) => [...s, item]))
+  }
 
   const retry = (depth: number) => {
     const node = path[depth]
@@ -176,6 +490,7 @@ export default function App() {
     if (!store || !confirm(`Delete "${s.title}" and everything generated under it?`)) return
     await store.deleteSubject(s.id)
     setSubjects((list) => list.filter((x) => x.id !== s.id))
+    setSaved(await store.saved().catch(() => []))
     if (path[0]?.id === s.id) setPath([])
   }
 
@@ -192,13 +507,71 @@ export default function App() {
   }
 
   const chapter = path[3]
+  const panels = path.filter((n) => n.level !== 'chapter')
+  /**
+   * Older panels fold out of the way so the newest always fits: oldest first,
+   * full → compact → strip. Manual folds (`folds`) override this per panel.
+   */
+  const autoFolds = useMemo(() => {
+    const phone = width < 600
+    const avail = width - (width > 900 && !railHidden ? 240 : 0) - (phone ? 24 : 32)
+    const W: Record<Fold, number> = { full: phone ? width - 48 : 300, compact: 210, strip: 48, hidden: -14 }
+    const newest = chapter ? Math.min(420, width - 32) : W.full // the reader stretches into whatever is left
+    const out: Fold[] = panels.map(() => 'full')
+    const total = () => out.reduce((t, f, i) => t + (i === out.length - 1 && !chapter ? newest : W[f]) + 14, chapter ? newest : -14)
+    const last = chapter ? out.length : out.length - 1 // the newest panel never folds
+    for (let i = 0; i < last && total() > avail; i++) {
+      if (phone) {
+        out[i] = 'hidden'
+        continue
+      }
+      out[i] = 'compact'
+      if (total() > avail) out[i] = 'strip'
+    }
+    return out
+  }, [width, railHidden, chapter, panels])
+
+  const focusPanel = (id: string) => {
+    setFolds((m) => ({ ...m, [id]: 'full' }))
+    requestAnimationFrame(() =>
+      document.querySelector(`[data-panel="${id}"]`)?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' }),
+    )
+  }
   const chapterSiblings = path[2] ? (kids[path[2].id] ?? []) : []
   const chapterIdx = chapter ? chapterSiblings.findIndex((c) => c.id === chapter.id) : -1
+  const chapterExtras = chapter ? (extras[chapter.id] ?? []) : []
+  /** a fact-check fix is stored as a corrected copy; show it in place of the original */
+  const lesson = chapter
+    ? ((latest(chapterExtras, 'fixed')?.body as Lesson | undefined) ?? (docs[chapter.id] as Lesson | undefined))
+    : undefined
+  const tools: ToolCtx | null =
+    chapter && lesson
+      ? {
+          extras: chapterExtras,
+          live: (kind, key) => live[liveKey(chapter.id, kind, key)] ?? '',
+          busy: (kind, key) => !!busy[liveKey(chapter.id, kind, key)],
+          error: (kind, key) => errors[liveKey(chapter.id, kind, key)] ?? '',
+          pending: (kind) => {
+            const prefix = liveKey(chapter.id, kind, '')
+            return Object.keys(busy)
+              .filter((k) => busy[k] && k.startsWith(prefix))
+              .map((k) => k.slice(prefix.length))
+          },
+          run: (kind, key, req) => void runExtra(chapter, kind, key, { ...req, context: lessonText(lesson) }),
+          lecture: (section) => void runLecture(chapter, lesson, section),
+          remove: (x) => void removeExtra(chapter, x),
+          teacher,
+        }
+      : null
 
   return (
-    <div className={`shell ${railOpen ? 'rail-open' : ''}`}>
+    <div className={`shell ${railOpen ? 'rail-open' : ''} ${railHidden ? 'rail-hidden' : ''} tab-${tab}`}>
       <header className="topbar">
-        <button className="icon-btn rail-toggle" onClick={() => setRailOpen((o) => !o)} aria-label="Subjects">
+        <button
+          className="icon-btn rail-toggle"
+          onClick={() => (width <= 900 ? setRailOpen((o) => !o) : setRailHidden((h) => !h))}
+          aria-label="Toggle subjects"
+        >
           ☰
         </button>
         <div className="brand">
@@ -223,6 +596,14 @@ export default function App() {
             Learn
           </button>
         </form>
+        <nav className="tabs" aria-label="View">
+          <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
+            Explore
+          </button>
+          <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
+            Library{saved.length > 0 && <span className="count">{saved.length}</span>}
+          </button>
+        </nav>
         <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
           ⚙
         </button>
@@ -237,7 +618,10 @@ export default function App() {
         <ul>
           {subjects.map((s) => (
             <li key={s.id}>
-              <button className={`rail-item ${path[0]?.id === s.id ? 'active' : ''}`} onClick={() => select(s, 0, [])}>
+              <button
+                className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                onClick={() => select(s, 0, [])}
+              >
                 {s.title}
               </button>
               <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
@@ -246,67 +630,123 @@ export default function App() {
             </li>
           ))}
         </ul>
+        <div className="legend">
+          <span>
+            <i className="dot seen" /> explored
+          </span>
+          <span>
+            <i className="dot done" /> completed
+          </span>
+          <span>
+            <i className="dot star" /> saved
+          </span>
+        </div>
       </aside>
       <div className="rail-scrim" onClick={() => setRailOpen(false)} />
 
-      <main className="columns" ref={columnsRef}>
-        {errors.topic && <p className="error">{errors.topic}</p>}
-        {path.length === 0 ? (
-          <div className="hero">
-            <h1>Pick a subject. Drill down. Learn it like a degree.</h1>
-            <p>Subject → branches → courses → syllabus → chapters, each written for you as you go.</p>
-            <div className="chips">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="chip" onClick={() => void submitTopic(s)} disabled={!store}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          <>
-            {path
-              .filter((n) => n.level !== 'chapter')
-              .map((parent, depth) => (
-                <Column
-                  key={parent.id}
-                  parent={parent}
-                  items={kids[parent.id]}
-                  syllabus={docs[parent.id] as Syllabus | undefined}
-                  loading={!!busy[parent.id]}
-                  error={errors[parent.id]}
-                  selectedId={path[depth + 1]?.id}
-                  done={done}
-                  onSelect={(n) => select(n, depth + 1)}
-                  onRetry={() => retry(depth)}
-                />
-              ))}
-            {chapter && (
-              <Reader
-                key={chapter.id}
-                chapter={chapter}
-                course={path[2]}
-                lesson={docs[chapter.id] as Lesson | undefined}
-                loading={!!busy[chapter.id]}
-                error={errors[chapter.id]}
-                isDone={done.has(chapter.id)}
-                index={chapterIdx}
-                total={chapterSiblings.length}
-                prev={chapterSiblings[chapterIdx - 1]}
-                next={chapterSiblings[chapterIdx + 1]}
-                onGo={(n) => select(n, 3)}
-                onRetry={() => retry(3)}
-                onToggleDone={() => void toggleDone(chapter.id)}
-              />
-            )}
-          </>
+      {tab === 'library' && (
+        <Library
+          saved={saved}
+          lectures={lectures}
+          speed={teacher.speed}
+          nodes={known}
+          docs={docs}
+          done={done}
+          loadAncestors={loadAncestors}
+          onOpen={(id) => void openById(id)}
+          onRemove={(x) => void removeSaved(x)}
+        />
+      )}
+
+      <main className="explore" hidden={tab !== 'explore'}>
+        {path.length > 1 && (
+          <nav className="crumbs" aria-label="Trail">
+            {path.map((n, i) => (
+              <button
+                key={n.id}
+                className={i === path.length - 1 ? 'here' : ''}
+                onClick={() => (n.level === 'chapter' ? undefined : focusPanel(n.id))}
+              >
+                {n.meta.code || n.title}
+              </button>
+            ))}
+          </nav>
         )}
+        <div className="columns" ref={columnsRef}>
+          {errors.topic && <p className="error">{errors.topic}</p>}
+          {path.length === 0 ? (
+            <div className="hero">
+              <h1>Pick a subject. Drill down. Learn it like a degree.</h1>
+              <p>Subject → branches → courses → syllabus → chapters, each written for you as you go.</p>
+              <div className="chips">
+                {SUGGESTIONS.map((s) => (
+                  <button key={s} className="chip" onClick={() => void submitTopic(s)} disabled={!store}>
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              {panels.map((parent, depth) => (
+                  <Column
+                    key={parent.id}
+                    fold={folds[parent.id] ?? autoFolds[depth]}
+                    onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
+                    selectedTitle={path[depth + 1]?.title}
+                    parent={parent}
+                    items={kids[parent.id]}
+                    preview={preview[parent.id]}
+                    syllabus={docs[parent.id] as Syllabus | undefined}
+                    loading={!!busy[parent.id]}
+                    error={errors[parent.id]}
+                    selectedId={path[depth + 1]?.id}
+                    done={done}
+                    visited={visited}
+                    savedIds={savedNode}
+                    onToggleSave={(n) => void toggleSave(n)}
+                    onSelect={(n) => select(n, depth + 1)}
+                    onRetry={() => retry(depth)}
+                  />
+                ))}
+              {chapter && (
+                <Reader
+                  key={chapter.id}
+                  chapter={chapter}
+                  course={path[2]}
+                  lesson={lesson}
+                  loading={!!busy[chapter.id]}
+                  error={errors[chapter.id]}
+                  isDone={done.has(chapter.id)}
+                  index={chapterIdx}
+                  total={chapterSiblings.length}
+                  prev={chapterSiblings[chapterIdx - 1]}
+                  next={chapterSiblings[chapterIdx + 1]}
+                  onGo={(n) => select(n, 3)}
+                  onRetry={() => retry(3)}
+                  onToggleDone={() => void toggleDone(chapter.id)}
+                  isSaved={savedNode.has(chapter.id)}
+                  onToggleSave={() => void toggleSave(chapter)}
+                  onSaveSnippet={(t) => void saveSnippet(chapter, t)}
+                  studyTools={studyTools}
+                  onToggleStudyTools={toggleStudyTools}
+                  tools={tools ?? EMPTY_TOOLS}
+                  fixing={!!busy[liveKey(chapter.id, 'fix', '')]}
+                  fixError={errors[liveKey(chapter.id, 'fix', '')] ?? ''}
+                  onFix={(check) => lesson && void fixChapter(chapter, lesson, check)}
+                />
+              )}
+            </>
+          )}
+        </div>
       </main>
 
       {showSettings && (
         <SettingsSheet
           settings={settings}
           mode={store?.mode}
+          teacher={teacher}
+          onTeacher={saveTeacher}
           onSave={(s) => {
             setSettings(s)
             saveSettings(s)
@@ -317,4 +757,14 @@ export default function App() {
       )}
     </div>
   )
+}
+
+function useWidth() {
+  const [w, setW] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const on = () => setW(window.innerWidth)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return w
 }

@@ -236,22 +236,30 @@ function Problem({ n, p }: { n: number; p: PracticeProblem }) {
   )
 }
 
-/** Fact-check button + result. Fixing asks for confirmation first. */
+/**
+ * Fact-check, in two parts: the button (lives in the sticky toolbar) and the result panel
+ * (stays in the page). Fixing asks for confirmation first.
+ */
 export function FactCheck({
   ctx,
   fixing,
   fixError,
   onFix,
+  part,
+  open,
+  setOpen,
 }: {
   ctx: ToolCtx
   fixing: boolean
   fixError: string
   onFix: (check: CheckResult) => void
+  part: 'button' | 'panel'
+  open: boolean
+  setOpen: (fn: (o: boolean) => boolean) => void
 }) {
   const saved = latest(ctx.extras, 'check')?.body as CheckResult | undefined
   const busy = ctx.busy('factcheck', '')
   const err = ctx.error('factcheck', '')
-  const [open, setOpen] = useState(false)
   const check = busy ? undefined : saved
 
   const n = check?.issues.length ?? 0
@@ -267,8 +275,8 @@ export function FactCheck({
             ? [`⚠ ${n} issue${n === 1 ? '' : 's'}`, 'warn']
             : ['Fact-check', '']
 
-  return (
-    <>
+  if (part === 'button')
+    return (
       <button
         className={`check-btn ${cls}`}
         disabled={busy || fixing}
@@ -278,6 +286,10 @@ export function FactCheck({
         {(busy || fixing) && <span className="pulse" />}
         {label}
       </button>
+    )
+
+  return (
+    <>
       {err && <Retry msg={err} onRetry={() => ctx.run('factcheck', '', {})} />}
       {fixError && <div className="error">{fixError}</div>}
       {busy && ctx.live('factcheck', '') && (

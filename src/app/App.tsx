@@ -468,6 +468,41 @@ export default function App() {
     [loadAncestors, openChain],
   )
 
+  /** where you last were inside each subject (subject id → node ids, top down); synced */
+  const [trails, setTrails] = useState<Record<string, string[]>>({})
+  const trailsLoaded = useRef(false)
+  useEffect(() => {
+    if (!store || trailsLoaded.current) return
+    trailsLoaded.current = true
+    void store
+      .pref<Record<string, string[]>>('trails')
+      .then((t) => t && setTrails((cur) => ({ ...t, ...cur })))
+      .catch(() => {})
+  }, [store])
+  useEffect(() => {
+    const sub = path[0]
+    if (!sub) return
+    const ids = path.map((n) => n.id)
+    setTrails((t) => (t[sub.id]?.join() === ids.join() ? t : { ...t, [sub.id]: ids }))
+  }, [path])
+  // save a moment after the last move rather than on every click
+  useEffect(() => {
+    if (!store || !trailsLoaded.current || !Object.keys(trails).length) return
+    const t = setTimeout(() => void store.setPref('trails', trails).catch(() => {}), 1500)
+    return () => clearTimeout(t)
+  }, [trails, store])
+
+  /** Open a subject where you left it; tapping the subject you're already in goes to its top. */
+  const openSubject = useCallback(
+    (s: TreeNode) => {
+      const last = trails[s.id]
+      if (path[0]?.id === s.id || !last || last.length < 2) return select(s, 0, [])
+      setRailOpen(false)
+      void openById(last[last.length - 1])
+    },
+    [trails, path, select, openById],
+  )
+
   // Resume wherever you (on any device) clicked last.
   const resumed = useRef(false)
   useEffect(() => {
@@ -517,7 +552,7 @@ export default function App() {
     if (!title || !store) return
     setTopic('')
     const existing = subjects.find((s) => s.title.toLowerCase() === title.toLowerCase())
-    if (existing) return select(existing, 0, [])
+    if (existing) return openSubject(existing)
     try {
       const [made] = await store.addNodes([{ parent_id: null, level: 'subject', title, summary: '', position: 0 }])
       setSubjects((s) => [made, ...s])
@@ -665,7 +700,7 @@ export default function App() {
               <li key={s.id}>
                 <button
                   className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                  onClick={() => select(s, 0, [])}
+                  onClick={() => openSubject(s)}
                 >
                   {s.title}
                 </button>

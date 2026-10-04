@@ -1101,7 +1101,7 @@ button:disabled {
 .snip-btn,
 .snip-flash {
   position: sticky;
-  top: 0;
+  top: 44px;
   z-index: 3;
   align-self: flex-end;
   margin-bottom: -40px;
@@ -1446,7 +1446,31 @@ button:disabled {
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  margin-top: 14px;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  /* frozen to the top of the reader while the chapter scrolls under it */
+  position: sticky;
+  top: -24px;
+  z-index: 4;
+  margin: 0 -28px 8px;
+  padding: 10px 28px;
+  background: rgba(16, 19, 28, 0.94);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border);
+}
+
+.reader-tools .switch,
+.reader-tools .check-btn {
+  height: 36px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.reader > .check-panel,
+.reader > .error {
+  margin-bottom: 12px;
 }
 
 .switch {
@@ -2460,4 +2484,61 @@ button:disabled {
   .shell:has(.mini-player) .library {
     padding-bottom: 170px;
   }
+}
+
+@media (max-width: 560px) {
+  .reader-tools {
+    top: -18px;
+    margin: 0 -16px 8px;
+    padding: 8px 16px;
+    gap: 8px;
+  }
+}
+
+/* ---------- library: sort, open/close all ---------- */
+
+.lib-tools {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lib-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-right: auto;
+}
+
+.lib-sort select {
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.lib-fold {
+  height: 38px;
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.lib-chev {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  color: var(--neon);
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.lib-course.folded .lib-chev {
+  transform: rotate(-90deg);
 }

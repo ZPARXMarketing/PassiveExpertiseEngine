@@ -11,6 +11,7 @@ import {
   chunkScript,
   completionBody,
   listSpeechModels,
+  pickSpeechModel,
   modelFor,
   sseToText,
   synthesize,
@@ -126,7 +127,10 @@ export async function speak(req: SpeechRequest, settings: Settings): Promise<Blo
 /** Speech models + voices currently offered (via the site, or the browser key). */
 export async function speechModels(settings: Settings): Promise<{ models: SpeechModel[]; defaultModel: string }> {
   const key = userKey(settings)
-  if (key) return { models: await listSpeechModels(key).catch(() => []), defaultModel: SPEECH_MODEL }
+  if (key) {
+    const models = await listSpeechModels(key).catch(() => [])
+    return { models, defaultModel: pickSpeechModel(models, SPEECH_MODEL) }
+  }
   const res = await fetch('/api/speech')
   if (!res.ok) return { models: [], defaultModel: SPEECH_MODEL }
   return (await res.json()) as { models: SpeechModel[]; defaultModel: string }
@@ -159,7 +163,7 @@ let modelsCache: Promise<{ models: SpeechModel[]; defaultModel: string }> | null
 export async function resolveVoice(voice: string, model: string | undefined, settings: Settings): Promise<{ voice: string; model: string }> {
   modelsCache ??= speechModels(settings).catch(() => ({ models: [], defaultModel: SPEECH_MODEL }))
   const { models, defaultModel } = await modelsCache
-  const m = model || defaultModel
+  const m = pickSpeechModel(models, model || defaultModel)
   const voices = models.find((x) => x.id === m)?.voices ?? []
   return { voice: !voices.length || voices.includes(voice) ? voice : voices[0], model: m }
 }

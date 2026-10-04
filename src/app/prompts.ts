@@ -352,7 +352,8 @@ export function sseToText(): TransformStream<Uint8Array, string> {
 
 /* ---------------- lectures: text to speech ---------------- */
 
-export const SPEECH_MODEL = 'openai/gpt-4o-mini-tts-2025-12-15'
+/** preferred voice model; if OpenRouter doesn't list it, pickSpeechModel chooses one it does */
+export const SPEECH_MODEL = 'openai/gpt-4o-mini-tts'
 export const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']
 export const STYLES: Record<string, { label: string; instructions: string }> = {
   professor: {
@@ -452,13 +453,33 @@ export interface SpeechModel {
   voices: string[]
 }
 
+/**
+ * The model to use: the wanted one if OpenRouter lists it, otherwise the closest it does
+ * (an OpenAI mini TTS, then any OpenAI voice model, then the first listed).
+ */
+export function pickSpeechModel(models: SpeechModel[], wanted: string): string {
+  if (!models.length || models.some((m) => m.id === wanted)) return wanted
+  return (
+    models.find((m) => /gpt-4o-mini-tts/.test(m.id))?.id ??
+    models.find((m) => m.id.startsWith('openai/'))?.id ??
+    models[0].id
+  )
+}
+
 /** The speech models OpenRouter offers right now, with the voices each supports. */
 export async function listSpeechModels(apiKey?: string): Promise<SpeechModel[]> {
-  const res = await fetch(`${OPENROUTER_BASE_URL}/models?output_modalities=speech`, {
-    headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {},
-  })
-  if (!res.ok) return []
-  const data = ((await res.json().catch(() => null)) as { data?: Record<string, unknown>[] } | null)?.data ?? []
+  const get = async (q: string) => {
+    const res = await fetch(`${OPENROUTER_BASE_URL}/models${q}`, { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {} })
+    if (!res.ok) return []
+    return ((await res.json().catch(() => null)) as { data?: Record<string, unknown>[] } | null)?.data ?? []
+  }
+  let data = await get('?output_modalities=speech')
+  // if the filter isn't honoured, scan everything for models that output speech/audio
+  if (!data.length || data.length > 100)
+    data = (await get('')).filter((m) => {
+      const out = (m.architecture as { output_modalities?: string[] } | undefined)?.output_modalities ?? []
+      return out.some((o) => /speech|audio/i.test(o)) || /tts/i.test(String(m.id))
+    })
   // voices aren't in a guaranteed place: take the first string array under a key that mentions "voice"
   const findVoices = (o: unknown, depth = 0): string[] => {
     if (!o || typeof o !== 'object' || depth > 3) return []

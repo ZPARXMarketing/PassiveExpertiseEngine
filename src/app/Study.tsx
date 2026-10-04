@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { clock, useAudio, type Track } from './audio.ts'
+import { Marked } from './Marked.tsx'
 import { latest, paras, parseCheck, parsePractice, parseSections } from './parse.ts'
 import { Chart } from './Chart.tsx'
 import { LECTURE_LENGTHS, voiceLabel } from './prompts.ts'
@@ -98,7 +99,9 @@ export function DeeperPanel({
             )}
           </h4>
           {paras(s.body).map((t) => (
-            <p key={t}>{t}</p>
+            <p key={t}>
+              <Marked text={t} />
+            </p>
           ))}
           {open.has(s.heading) && (
             <Opener ctx={ctx} focus={[...focus, s.heading]} studyTools={studyTools} onClose={() => toggle(s.heading)} />

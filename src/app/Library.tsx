@@ -316,7 +316,7 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
                           {ch.snippets
                             .sort((a, b) => a.created_at.localeCompare(b.created_at))
                             .map((sn) => (
-                              <blockquote key={sn.id} className="lib-snip">
+                              <blockquote key={sn.id} className={`lib-snip hl-border-${sn.color ?? 'yellow'}`}>
                                 <p>{sn.text}</p>
                                 <button className="lib-x" onClick={() => onRemove(sn)} aria-label="Remove highlight">
                                   ×

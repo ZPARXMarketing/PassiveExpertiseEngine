@@ -1098,7 +1098,6 @@ button:disabled {
   position: relative;
 }
 
-.snip-btn,
 .snip-flash {
   position: sticky;
   top: 44px;
@@ -2541,4 +2540,120 @@ button:disabled {
 
 .lib-course.folded .lib-chev {
   transform: rotate(-90deg);
+}
+
+/* ---------- highlighter ---------- */
+
+:root {
+  --hl-yellow: rgba(255, 214, 10, 0.32);
+  --hl-green: rgba(42, 255, 163, 0.26);
+  --hl-blue: rgba(76, 201, 255, 0.3);
+  --hl-pink: rgba(255, 92, 170, 0.3);
+}
+
+mark.hl {
+  color: inherit;
+  border-radius: 3px;
+  padding: 1px 0;
+  cursor: pointer;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.hl-yellow {
+  background: var(--hl-yellow);
+}
+
+.hl-green {
+  background: var(--hl-green);
+}
+
+.hl-blue {
+  background: var(--hl-blue);
+}
+
+.hl-pink {
+  background: var(--hl-pink);
+}
+
+mark.hl-active {
+  outline: 2px solid var(--text-dim);
+  outline-offset: 1px;
+}
+
+/* floating colour bar: under the sticky toolbar, at the right */
+.hl-bar {
+  position: sticky;
+  top: 44px;
+  z-index: 5;
+  align-self: flex-end;
+  margin-bottom: -48px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 48px;
+  padding: 0 10px 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-3);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.hl-swatch {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+
+.hl-swatch.hl-yellow {
+  background: #ffd60a;
+}
+
+.hl-swatch.hl-green {
+  background: var(--neon);
+}
+
+.hl-swatch.hl-blue {
+  background: var(--cyan);
+}
+
+.hl-swatch.hl-pink {
+  background: #ff5caa;
+}
+
+.hl-swatch.on {
+  border-color: var(--text);
+}
+
+.hl-remove {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--danger);
+  border: 1px solid rgba(255, 92, 122, 0.4);
+  font-weight: 600;
+}
+
+.lib-snip.hl-border-yellow {
+  border-left-color: #ffd60a;
+  background: var(--hl-yellow);
+}
+
+.lib-snip.hl-border-green {
+  border-left-color: var(--neon);
+  background: var(--hl-green);
+}
+
+.lib-snip.hl-border-blue {
+  border-left-color: var(--cyan);
+  background: var(--hl-blue);
+}
+
+.lib-snip.hl-border-pink {
+  border-left-color: #ff5caa;
+  background: var(--hl-pink);
 }

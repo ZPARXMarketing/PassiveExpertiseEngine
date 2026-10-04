@@ -52,6 +52,8 @@ export interface SavedItem {
   node_id: string
   kind: 'node' | 'snippet'
   text: string
+  /** highlighter colour for snippets */
+  color?: string
   created_at: string
 }
 

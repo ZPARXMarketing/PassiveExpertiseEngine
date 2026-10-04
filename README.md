@@ -21,6 +21,9 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   the subject rail. On phones a breadcrumb trail jumps back to any level.
 - **Each subject remembers where you were.** Hop Music → Physics → Chemistry → back to Music and
   you land exactly where you left Music (tap the subject you're in to go back to its top). Synced.
+- **Highlighter.** Select text in a chapter (or a deeper dive) and pick yellow, green, blue or
+  pink; marks stay on the text every visit, on every device. Tap a mark to recolour or remove it.
+  Highlights also appear in the Library under their chapter, in their colour.
 - **Study tools toolbar stays frozen** at the top of the chapter while you scroll.
 - **Library tab** (pinned in the top bar). ☆ any course or chapter, or highlight chapter text →
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter

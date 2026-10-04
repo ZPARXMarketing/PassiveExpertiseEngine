@@ -35,7 +35,8 @@ export interface Store {
   visits(): Promise<Map<string, string>>
   visit(nodeId: string): Promise<void>
   saved(): Promise<SavedItem[]>
-  addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text'>): Promise<SavedItem>
+  addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text' | 'color'>): Promise<SavedItem>
+  recolorSaved(id: string, color: string): Promise<void>
   removeSaved(id: string): Promise<void>
   extras(nodeId: string): Promise<Extra[]>
   addExtra(nodeId: string, kind: ExtraKind, key: string, body: unknown, model: string): Promise<Extra>
@@ -125,6 +126,9 @@ const cloud: Store = {
       body: JSON.stringify(item),
     })
     return row
+  },
+  recolorSaved: async (id, color) => {
+    await rest(`xe_saved?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ color }) })
   },
   removeSaved: async (id) => {
     await rest(`xe_saved?id=eq.${id}`, { method: 'DELETE' })
@@ -259,6 +263,11 @@ function makeDevice(): Store {
       saved().push(row)
       save(d)
       return row
+    },
+    recolorSaved: async (id, color) => {
+      const x = saved().find((y) => y.id === id)
+      if (x) x.color = color
+      save(d)
     },
     removeSaved: async (id) => {
       d.saved = saved().filter((x) => x.id !== id)

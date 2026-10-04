@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Player } from './Study.tsx'
-import { chainIds, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import { chainIds, lectureTitle, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 
@@ -80,7 +80,7 @@ export function Library({ saved, lectures, speed, nodes, docs, done, loadAncesto
       const [subject, branch, course, chapter] = chain
       if (!subject || !branch || !course) continue
       if (q) {
-        const extraText = 'text' in item ? item.text : (item.body as LectureBody).section
+        const extraText = 'text' in item ? item.text : lectureTitle(item.body as LectureBody)
         const hay = [...chain.map((n) => n?.title ?? ''), course.meta.code ?? '', extraText].join(' ').toLowerCase()
         if (!hay.includes(q)) continue
       }
@@ -194,7 +194,7 @@ export function Library({ saved, lectures, speed, nodes, docs, done, loadAncesto
                             const b = l.body as LectureBody
                             return (
                               <div key={l.id} className="lib-lecture">
-                                <div className="lib-lecture-title">🎧 {b.section || 'Whole chapter'}</div>
+                                <div className="lib-lecture-title">🎧 {lectureTitle(b)}</div>
                                 <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
                               </div>
                             )

@@ -2041,3 +2041,221 @@ button:disabled {
   text-decoration: none;
   font-weight: 600;
 }
+
+.key-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.key-row input {
+  flex: 1;
+}
+
+.key-row .btn-ghost {
+  margin-top: 6px;
+}
+
+.secret {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+/* ---------- lecture sheet ---------- */
+
+.lecture-sheet {
+  width: min(560px, 100%);
+}
+
+.sheet-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sheet-top h2 {
+  margin: 0;
+}
+
+.pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.sheet label.pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.sheet label.pick.on {
+  border-color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.pick input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--amber);
+  flex-shrink: 0;
+}
+
+.pick span:nth-of-type(1) {
+  flex: 1;
+}
+
+.pick-count {
+  font-size: 12px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+.seg {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin: 12px 0;
+}
+
+.seg button {
+  min-height: 52px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  font-weight: 600;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+}
+
+.seg button small {
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.seg button.on {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: var(--amber-soft);
+}
+
+.record-btn {
+  width: 100%;
+}
+
+.lect-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+
+.lect-title {
+  font-weight: 600;
+}
+
+.lect-meta {
+  font-size: 12.5px;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+
+.danger-btn {
+  color: var(--danger) !important;
+}
+
+.lecture-chip.has {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+/* ---------- background job pill ---------- */
+
+.job-pills {
+  position: fixed;
+  right: 16px;
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: min(360px, calc(100vw - 32px));
+}
+
+.job-pill {
+  display: flex;
+  align-items: center;
+  border-radius: 14px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  animation: fade-in 0.3s var(--ease);
+}
+
+.job-pill.ready {
+  border-color: var(--amber);
+}
+
+.job-pill.failed {
+  border-color: var(--danger);
+}
+
+.job-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+}
+
+.job-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.job-text small {
+  color: var(--text-faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.job-x {
+  width: 40px;
+  height: 40px;
+  color: var(--text-faint);
+  flex-shrink: 0;
+}
+
+/* ---------- deeper delete ---------- */
+
+.deeper-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.deeper-del {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 92, 122, 0.4);
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 600;
+}

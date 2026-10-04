@@ -1,8 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import { latest, paras, parseCheck, parsePractice, parseSections } from './parse.ts'
 import { Chart } from './Chart.tsx'
-import { STYLES } from './prompts.ts'
-import type { ChartSpec, CheckResult, Extra, LectureBody, LessonSection, PracticeProblem, Teacher } from './types.ts'
+import { LECTURE_LENGTHS, STYLES } from './prompts.ts'
+import {
+  lectureCounts,
+  lectureTitle,
+  type ChartSpec,
+  type CheckResult,
+  type Extra,
+  type LectureBody,
+  type LectureLength,
+  type LessonSection,
+  type PracticeProblem,
+  type Teacher,
+} from './types.ts'
 
 /** What one study tool needs from the chapter it lives in. */
 export interface ToolCtx {
@@ -16,8 +27,10 @@ export interface ToolCtx {
   run: (kind: 'deeper' | 'answer' | 'practice' | 'factcheck' | 'visual', key: string, req: { focus?: string[]; question?: string }) => void
   /** delete one saved extra (a chart) */
   remove: (x: Extra) => void
-  /** record a lecture for a section ('' = whole chapter) */
-  lecture: (section: string) => void
+  /** record a lecture covering these sections (none = whole chapter) */
+  lecture: (sections: string[], length: LectureLength) => void
+  /** lectures recording right now for this chapter */
+  jobs: { id: string; label: string; status: string }[]
   teacher: Teacher
 }
 
@@ -32,9 +45,20 @@ export function DeeperChip({ open, onClick }: { open: boolean; onClick: () => vo
 }
 
 /** A sub-lesson under one section; its own sections can go deeper again. */
-export function DeeperPanel({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: string[]; studyTools: boolean }) {
+export function DeeperPanel({
+  ctx,
+  focus,
+  studyTools,
+  onClose,
+}: {
+  ctx: ToolCtx
+  focus: string[]
+  studyTools: boolean
+  onClose: () => void
+}) {
   const key = focus.join(' > ')
-  const saved = latest(ctx.extras, 'deeper', key)?.body as { sections: LessonSection[] } | undefined
+  const row = latest(ctx.extras, 'deeper', key)
+  const saved = row?.body as { sections: LessonSection[] } | undefined
   const busy = ctx.busy('deeper', key)
   const sections = saved?.sections ?? (busy ? parseSections(ctx.live('deeper', key)) : [])
   const err = ctx.error('deeper', key)
@@ -49,7 +73,21 @@ export function DeeperPanel({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: s
 
   return (
     <div className="deeper" style={{ ['--depth' as string]: focus.length }}>
-      <div className="deeper-kicker">Deeper · {focus[focus.length - 1]}</div>
+      <div className="deeper-head">
+        <span className="deeper-kicker">Deeper · {focus[focus.length - 1]}</span>
+        {studyTools && row && !busy && (
+          <button
+            className="deeper-del"
+            onClick={() => {
+              if (!confirm('Delete this deeper dive (and any deeper dives inside it)?')) return
+              for (const x of ctx.extras) if (x.kind === 'deeper' && (x.key === key || x.key.startsWith(`${key} > `))) ctx.remove(x)
+              onClose()
+            }}
+          >
+            Delete
+          </button>
+        )}
+      </div>
       {sections.map((s) => (
         <section key={s.heading}>
           <h4>
@@ -61,7 +99,9 @@ export function DeeperPanel({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: s
           {paras(s.body).map((t) => (
             <p key={t}>{t}</p>
           ))}
-          {open.has(s.heading) && <Opener ctx={ctx} focus={[...focus, s.heading]} studyTools={studyTools} />}
+          {open.has(s.heading) && (
+            <Opener ctx={ctx} focus={[...focus, s.heading]} studyTools={studyTools} onClose={() => toggle(s.heading)} />
+          )}
         </section>
       ))}
       {busy && <Writing label="Going deeper…" />}
@@ -71,7 +111,17 @@ export function DeeperPanel({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: s
 }
 
 /** Opens a deeper panel, generating it the first time. */
-export function Opener({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: string[]; studyTools: boolean }) {
+export function Opener({
+  ctx,
+  focus,
+  studyTools,
+  onClose,
+}: {
+  ctx: ToolCtx
+  focus: string[]
+  studyTools: boolean
+  onClose: () => void
+}) {
   const key = focus.join(' > ')
   const need = !latest(ctx.extras, 'deeper', key) && !ctx.busy('deeper', key) && !ctx.error('deeper', key)
   const { run } = ctx
@@ -80,7 +130,7 @@ export function Opener({ ctx, focus, studyTools }: { ctx: ToolCtx; focus: string
     // run once per opened key; `focus` is derived from it
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key])
-  return <DeeperPanel ctx={ctx} focus={focus} studyTools={studyTools} />
+  return <DeeperPanel ctx={ctx} focus={focus} studyTools={studyTools} onClose={onClose} />
 }
 
 export function AskBox({ ctx }: { ctx: ToolCtx }) {
@@ -307,64 +357,156 @@ function Retry({ msg, onRetry }: { msg: string; onRetry: () => void }) {
   )
 }
 
-export function LectureChip({ open, onClick }: { open: boolean; onClick: () => void }) {
+/** Shows how many lectures already cover a section; tap to open the lecture sheet there. */
+export function LectureBadge({ count, onClick }: { count: number; onClick: () => void }) {
   return (
-    <button className={`lecture-chip ${open ? 'open' : ''}`} onClick={onClick} aria-expanded={open} aria-label="Lecture">
-      🎧{open ? ' ▾' : ''}
+    <button className={`lecture-chip ${count ? 'has' : ''}`} onClick={onClick} aria-label={`Lectures (${count})`}>
+      🎧{count ? ` ${count}` : ''}
     </button>
   )
 }
 
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
-
 /**
- * A lecture for one section (or the whole chapter): record it once, then play,
- * change speed, download or read the transcript. Recording is an explicit second tap.
+ * Everything lectures for one chapter: pick sections (or the whole chapter) and a length,
+ * record in the background, and manage every version made so far.
  */
-export function LecturePanel({ ctx, section }: { ctx: ToolCtx; section: string }) {
-  const lecture = latest(ctx.extras, 'lecture', section)?.body as LectureBody | undefined
-  const busy = ctx.busy('lecture', section)
-  const script = ctx.live('lecture', section)
-  const progress = ctx.live('lecture-rec', section)
-  const err = ctx.error('lecture', section)
-  const [showScript, setShowScript] = useState(false)
+export function LectureSheet({
+  ctx,
+  headings,
+  preselect,
+  onClose,
+}: {
+  ctx: ToolCtx
+  headings: string[]
+  preselect: string[]
+  onClose: () => void
+}) {
+  const [picked, setPicked] = useState<Set<string>>(new Set(preselect))
+  const [whole, setWhole] = useState(preselect.length === 0)
+  const [length, setLength] = useState<LectureLength>('medium')
+  const [started, setStarted] = useState(false)
+  const counts = lectureCounts(ctx.extras)
+  const mine = ctx.extras.filter((x) => x.kind === 'lecture').reverse()
   const voice = `${cap(ctx.teacher.voice)} · ${STYLES[ctx.teacher.style]?.label ?? ''}`
+  const canRecord = whole || picked.size > 0
+
+  const toggle = (h: string) => {
+    setWhole(false)
+    setPicked((o) => {
+      const n = new Set(o)
+      if (n.has(h)) n.delete(h)
+      else n.add(h)
+      return n
+    })
+  }
 
   return (
-    <div className="lecture">
-      <div className="lecture-kicker">🎧 Lecture · {section || 'Whole chapter'}</div>
-      {lecture && !busy && (
-        <>
-          <Player url={lecture.audioUrl} fileName={lecture.fileName} speed={ctx.teacher.speed} />
-          <div className="lecture-row">
-            <button className="reveal" onClick={() => setShowScript((v) => !v)} aria-expanded={showScript}>
-              {showScript ? 'Hide transcript' : 'Transcript'}
+    <div className="sheet-scrim" onClick={onClose}>
+      <div className="sheet lecture-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Lectures">
+        <div className="sheet-top">
+          <h2>🎧 Lectures</h2>
+          <button className="icon-btn" onClick={onClose} aria-label="Close">
+            ×
+          </button>
+        </div>
+
+        <h3 className="sheet-sub">New lecture</h3>
+        <div className="pick-list">
+          <label className={`pick ${whole ? 'on' : ''}`}>
+            <input
+              type="checkbox"
+              checked={whole}
+              onChange={() => {
+                setWhole((w) => !w)
+                setPicked(new Set())
+              }}
+            />
+            <span>Whole chapter</span>
+            {!!counts.get('') && <span className="pick-count">🎧 {counts.get('')}</span>}
+          </label>
+          {headings.map((h) => (
+            <label key={h} className={`pick ${picked.has(h) ? 'on' : ''}`}>
+              <input type="checkbox" checked={picked.has(h)} onChange={() => toggle(h)} />
+              <span>{h}</span>
+              {!!counts.get(h) && <span className="pick-count">🎧 {counts.get(h)}</span>}
+            </label>
+          ))}
+        </div>
+        <div className="seg" role="radiogroup" aria-label="Length">
+          {(Object.keys(LECTURE_LENGTHS) as LectureLength[]).map((k) => (
+            <button key={k} role="radio" aria-checked={length === k} className={length === k ? 'on' : ''} onClick={() => setLength(k)}>
+              {LECTURE_LENGTHS[k].label}
+              <small>~{LECTURE_LENGTHS[k].minutes} min</small>
             </button>
-            <button
-              className="reveal muted-btn"
-              onClick={() => confirm(`Record a new version in ${voice}?`) && ctx.lecture(section)}
-            >
-              Re-record
-            </button>
-          </div>
-          {showScript && <div className="transcript">{paras(lecture.script).map((t) => <p key={t}>{t}</p>)}</div>}
-        </>
-      )}
-      {busy && (
-        <>
-          <Writing label={progress ? `Recording ${progress}…` : 'Writing the lecture…'} />
-          {script && !progress && <div className="transcript live">{paras(script).slice(-2).map((t) => <p key={t}>{t}</p>)}</div>}
-        </>
-      )}
-      {!lecture && !busy && (
-        <button className="btn-neon" onClick={() => ctx.lecture(section)}>
+          ))}
+        </div>
+        <button
+          className="btn-neon record-btn"
+          disabled={!canRecord}
+          onClick={() => {
+            ctx.lecture(whole ? [] : headings.filter((h) => picked.has(h)), length)
+            setStarted(true)
+            setPicked(new Set())
+            setWhole(false)
+          }}
+        >
           Record lecture <span className="voice-tag">{voice}</span>
         </button>
-      )}
-      {err && !busy && <div className="error">{err}</div>}
+        {started && <p className="sheet-note">Recording in the background — close this and keep reading. A pill in the corner shows progress.</p>}
+
+        {!!ctx.jobs.length && (
+          <>
+            <h3 className="sheet-sub">Recording now</h3>
+            {ctx.jobs.map((j) => (
+              <div key={j.id} className="lect-item">
+                <div className="lect-title">{j.label}</div>
+                <Writing label={j.status.startsWith('failed') ? j.status : j.status} />
+              </div>
+            ))}
+          </>
+        )}
+
+        <h3 className="sheet-sub">Your lectures ({mine.length})</h3>
+        {!mine.length && <p className="sheet-note">None yet for this chapter.</p>}
+        {mine.map((x) => (
+          <LectureItem key={x.id} x={x} speed={ctx.teacher.speed} onDelete={() => confirm('Delete this lecture and its audio?') && ctx.remove(x)} />
+        ))}
+      </div>
     </div>
   )
 }
+
+function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete: () => void }) {
+  const b = x.body as LectureBody
+  const [script, setScript] = useState(false)
+  return (
+    <div className="lect-item">
+      <div className="lect-title">{lectureTitle(b)}</div>
+      <div className="lect-meta">
+        {b.length ? `${LECTURE_LENGTHS[b.length].label} · ` : ''}
+        {cap(b.voice)} · {new Date(x.created_at).toLocaleDateString()}
+      </div>
+      <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
+      <div className="lecture-row">
+        <button className="reveal" onClick={() => setScript((v) => !v)} aria-expanded={script}>
+          {script ? 'Hide transcript' : 'Transcript'}
+        </button>
+        <button className="reveal danger-btn" onClick={onDelete}>
+          Delete
+        </button>
+      </div>
+      {script && (
+        <div className="transcript">
+          {paras(b.script).map((t) => (
+            <p key={t}>{t}</p>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
 
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 

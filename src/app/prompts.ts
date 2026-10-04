@@ -52,7 +52,16 @@ export interface GenRequest {
   question?: string
   /** fix: the issues the fact-check found */
   issues?: string
+  /** lecture: how long */
+  length?: 'short' | 'medium' | 'long'
 }
+
+/** Lecture lengths: target words at a speaking pace of roughly 150 words a minute. */
+export const LECTURE_LENGTHS = {
+  short: { label: 'Short', minutes: 3, words: '400 to 550' },
+  medium: { label: 'Medium', minutes: 7, words: '950 to 1150' },
+  long: { label: 'Long', minutes: 12, words: '1650 to 1900' },
+} as const
 
 const BASE = `You are the curriculum office of a top university. Be accurate and specific.
 Prefer well-established facts; if a figure, date or attribution is uncertain, say so
@@ -178,7 +187,7 @@ CORRECTION: <the accurate version>
 SOURCE: <url>`,
   },
   lecture: {
-    maxTokens: 2800,
+    maxTokens: 3400,
     temperature: 0.4,
     system: `${BASE}
 
@@ -188,9 +197,7 @@ key idea..."), no headings, lists, symbols or formulas written as symbols (say t
 words, e.g. "x squared"), spell out abbreviations on first use. Open with a hook, explain
 the ideas, walk through one concrete example with real numbers, and close with a short
 recap of the three things to remember. Teach it; do not just read the chapter back.
-Output only the spoken words, paragraphs separated by blank lines.
-
-Length: about 1100 to 1500 words for a whole chapter, 450 to 700 words for one section.`,
+Output only the spoken words, paragraphs separated by blank lines. Hit the requested length.`,
   },
   visual: {
     maxTokens: 1500,
@@ -252,8 +259,15 @@ function userPrompt(req: GenRequest): string {
     if (req.focus?.length) lines.push(`\nSection: ${req.focus.join(' > ')}`)
     lines.push(req.question ? `\nThe learner asked for: ${req.question}` : '\nChoose the most useful visual for this section.')
   }
-  if (req.kind === 'lecture')
-    lines.push(req.focus?.length ? `\nLecture on this section only: ${req.focus.join(' > ')}` : '\nLecture on the whole chapter.')
+  if (req.kind === 'lecture') {
+    lines.push(
+      req.focus?.length
+        ? `\nLecture covering ${req.focus.length > 1 ? 'these sections, tied together' : 'this section only'}: ${req.focus.join('; ')}`
+        : '\nLecture on the whole chapter.',
+    )
+    const len = LECTURE_LENGTHS[req.length ?? 'medium']
+    lines.push(`Length: ${len.words} words (about ${len.minutes} minutes spoken).`)
+  }
   if (req.kind === 'answer' && req.question) lines.push(`\nQuestion: ${req.question}`)
   if (req.kind === 'fix' && req.issues) lines.push(`\nIssues found:\n${req.issues}`)
   return lines.join('\n')
@@ -291,7 +305,9 @@ export function isGenRequest(x: unknown): x is GenRequest {
     r.trail.every((t) => typeof t === 'string' && t.trim().length > 0 && t.length <= 200) &&
     okStr(r.context, 20000) &&
     okStr(r.question, 2000) &&
-    okStr(r.issues, 8000)
+    okStr(r.issues, 8000) &&
+    (r.length === undefined || ['short', 'medium', 'long'].includes(r.length)) &&
+    (r.focus === undefined || (Array.isArray(r.focus) && r.focus.length <= 12 && r.focus.every((f) => typeof f === 'string' && f.length <= 300)))
   )
 }
 
@@ -363,6 +379,8 @@ export interface SpeechRequest {
   text: string
   voice: string
   style: string
+  /** TTS model slug; defaults to SPEECH_MODEL */
+  model?: string
 }
 
 export function isSpeechRequest(x: unknown): x is SpeechRequest {
@@ -372,20 +390,93 @@ export function isSpeechRequest(x: unknown): x is SpeechRequest {
     typeof r.text === 'string' &&
     r.text.trim().length > 0 &&
     r.text.length <= SPEECH_CHUNK + 500 &&
-    VOICES.includes(r.voice) &&
+    typeof r.voice === 'string' &&
+    /^[\w.-]{1,60}$/.test(r.voice) &&
     typeof r.style === 'string' &&
-    r.style in STYLES
+    r.style in STYLES &&
+    (r.model === undefined || /^[\w.-]+\/[\w.:-]+$/.test(r.model))
   )
 }
 
-export function speechBody(req: SpeechRequest, model = SPEECH_MODEL) {
+export function speechBody(req: SpeechRequest, model: string, withStyle = true) {
   return {
     model,
     input: req.text,
     voice: req.voice,
     response_format: 'mp3',
-    provider: { options: { openai: { instructions: STYLES[req.style].instructions } } },
+    ...(withStyle && model.startsWith('openai/')
+      ? { provider: { options: { openai: { instructions: STYLES[req.style].instructions } } } }
+      : {}),
   }
+}
+
+/**
+ * Call OpenRouter's speech endpoint. If it rejects the request (400) with the speaking-style
+ * option attached, try once more without it. Returns the audio response, or the error detail.
+ */
+export async function synthesize(
+  apiKey: string,
+  req: SpeechRequest,
+  model: string,
+  headers: Record<string, string> = {},
+): Promise<{ ok: true; res: Response } | { ok: false; status: number; detail: string }> {
+  let last = { status: 0, detail: '' }
+  for (const withStyle of [true, false]) {
+    const res = await fetch(`${OPENROUTER_BASE_URL}/audio/speech`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}`, 'X-Title': 'Expertise Engine', ...headers },
+      body: JSON.stringify(speechBody(req, model, withStyle)),
+    })
+    if (res.ok && res.body) return { ok: true, res }
+    last = { status: res.status, detail: errorDetail(await res.text().catch(() => '')) }
+    if (res.status !== 400) break
+  }
+  return { ok: false, ...last }
+}
+
+/** OpenRouter error JSON → its human-readable message. */
+export function errorDetail(body: string): string {
+  try {
+    const j = JSON.parse(body) as { error?: { message?: string; metadata?: { raw?: string } } | string }
+    const e = j.error
+    if (typeof e === 'string') return e.slice(0, 300)
+    return (e?.metadata?.raw || e?.message || body).toString().slice(0, 300)
+  } catch {
+    return body.slice(0, 300)
+  }
+}
+
+export interface SpeechModel {
+  id: string
+  name: string
+  voices: string[]
+}
+
+/** The speech models OpenRouter offers right now, with the voices each supports. */
+export async function listSpeechModels(apiKey?: string): Promise<SpeechModel[]> {
+  const res = await fetch(`${OPENROUTER_BASE_URL}/models?output_modalities=speech`, {
+    headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {},
+  })
+  if (!res.ok) return []
+  const data = ((await res.json().catch(() => null)) as { data?: Record<string, unknown>[] } | null)?.data ?? []
+  // voices aren't in a guaranteed place: take the first string array under a key that mentions "voice"
+  const findVoices = (o: unknown, depth = 0): string[] => {
+    if (!o || typeof o !== 'object' || depth > 3) return []
+    for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+      if (/voice/i.test(k) && Array.isArray(v)) {
+        const names = v.map((x) => (typeof x === 'string' ? x : (x as { id?: string; name?: string })?.id ?? (x as { name?: string })?.name)).filter(
+          (x): x is string => typeof x === 'string',
+        )
+        if (names.length) return names
+      }
+      const deeper = findVoices(v, depth + 1)
+      if (deeper.length) return deeper
+    }
+    return []
+  }
+  return data
+    .map((m) => ({ id: String(m.id ?? ''), name: String(m.name ?? m.id ?? ''), voices: findVoices(m) }))
+    .filter((m) => m.id)
 }
 
 /** Split a script into chunks under the per-request limit, on paragraph/sentence boundaries. */

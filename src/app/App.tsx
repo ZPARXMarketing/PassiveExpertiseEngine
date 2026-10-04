@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { generate, loadSettings, record, saveSettings, type Settings } from './generate.ts'
+import { generate, loadSettings, record, resolveVoice, saveSettings, type Settings } from './generate.ts'
 import type { GenKind, GenRequest } from './prompts.ts'
 import {
   applyFix,
@@ -24,6 +24,7 @@ import {
   type Extra,
   type Lesson,
   type LectureBody,
+  type LectureLength,
   type Level,
   type Teacher,
   type SavedItem,
@@ -47,8 +48,9 @@ const EMPTY_TOOLS: ToolCtx = {
   pending: () => [],
   run: () => {},
   lecture: () => {},
+  jobs: [],
   remove: () => {},
-  teacher: { voice: 'sage', style: 'professor', speed: 1 },
+  teacher: { voice: 'alloy', style: 'professor', speed: 1 },
 }
 
 /** At most one UI update per animation frame per stream. */
@@ -106,9 +108,28 @@ export default function App() {
   const [extras, setExtras] = useState<Record<string, Extra[]>>({})
   const [live, setLive] = useState<Record<string, string>>({})
   const [studyTools, setStudyTools] = useState(false)
-  const [teacher, setTeacher] = useState<Teacher>({ voice: 'sage', style: 'professor', speed: 1 })
+  const [teacher, setTeacher] = useState<Teacher>({ voice: 'alloy', style: 'professor', speed: 1 })
   /** every lecture, for the Library (loaded when it opens) */
   const [lectures, setLectures] = useState<Extra[]>([])
+  /** lectures being made in the background, by busy key */
+  const [jobs, setJobs] = useState<Record<string, { chapterId: string; label: string; status: string }>>({})
+  /** chapter whose lecture sheet should open (from the pill) */
+  const [openLectures, setOpenLectures] = useState('')
+  // "ready" pills clear themselves after a while; failures stay until dismissed
+  useEffect(() => {
+    const ready = Object.keys(jobs).filter((id) => jobs[id].status === 'ready')
+    if (!ready.length) return
+    const t = setTimeout(
+      () =>
+        setJobs((j) => {
+          const n = { ...j }
+          for (const id of ready) delete n[id]
+          return n
+        }),
+      10000,
+    )
+    return () => clearTimeout(t)
+  }, [jobs])
   const inflight = useRef(new Set<string>())
   const columnsRef = useRef<HTMLDivElement>(null)
 
@@ -312,45 +333,59 @@ export default function App() {
     [run, store, settings, known],
   )
 
-  /** Write a spoken script, record it in the teacher's voice, store the MP3. */
+  /**
+   * Write a spoken script, record it in the teacher's voice, store the MP3. Runs in the
+   * background (progress in the floating pill), so reading isn't interrupted.
+   */
   const runLecture = useCallback(
-    (chapter: TreeNode, lesson: Lesson, section: string) => {
-      const id = liveKey(chapter.id, 'lecture', section)
+    (chapter: TreeNode, lesson: Lesson, sections: string[], length: LectureLength) => {
+      const key = String(Date.now())
+      const id = liveKey(chapter.id, 'lecture', key)
+      const label = sections.join(' + ') || 'Whole chapter'
+      const setJob = (status: string) => setJobs((j) => ({ ...j, [id]: { chapterId: chapter.id, label, status } }))
+      setJob('Writing script…')
       return run(id, async () => {
         if (!store) return
-        const chain = chainIds(chapter.id, known).map((x) => known[x]).filter(Boolean)
-        const trail = chain.slice(0, 3).map((n) => n.title)
-        const { text, model } = await generate(
-          {
-            kind: 'lecture',
-            trail: trail.length ? trail : [chapter.title],
-            chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
-            context: lessonText(lesson),
-            focus: section ? [section] : undefined,
-          },
-          settings,
-          (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
-        )
-        const script = text.trim()
-        const prog = liveKey(chapter.id, 'lecture-rec', section)
-        const audio = await record(script, { voice: teacher.voice, style: teacher.style }, settings, (d, n) =>
-          setLive((l) => ({ ...l, [prog]: `${d}/${n}` })),
-        )
-        const slug = (section || 'chapter').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
-        const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${Date.now()}.mp3`, audio)
-        const code = chain[2]?.meta.code
-        const body: LectureBody = {
-          script,
-          audioUrl,
-          voice: teacher.voice,
-          style: teacher.style,
-          section,
-          fileName: `${[code, chapter.title, section].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.mp3`,
+        try {
+          const chain = chainIds(chapter.id, known).map((x) => known[x]).filter(Boolean)
+          const trail = chain.slice(0, 3).map((n) => n.title)
+          const { text, model } = await generate(
+            {
+              kind: 'lecture',
+              trail: trail.length ? trail : [chapter.title],
+              chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
+              context: lessonText(lesson),
+              focus: sections.length ? sections : undefined,
+              length,
+            },
+            settings,
+          )
+          const script = text.trim()
+          const v = await resolveVoice(teacher.voice, teacher.model, settings)
+          const audio = await record(script, { voice: v.voice, style: teacher.style, model: v.model }, settings, (d, n) =>
+            setJob(`Recording ${d}/${n}…`),
+          )
+          setJob('Saving…')
+          const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+          const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${key}.mp3`, audio)
+          const code = chain[2]?.meta.code
+          const body: LectureBody = {
+            script,
+            audioUrl,
+            voice: v.voice,
+            style: teacher.style,
+            sections,
+            length,
+            fileName: `${[code, chapter.title, sections.length ? label : '', length].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.mp3`,
+          }
+          const row = await store.addExtra(chapter.id, 'lecture', key, body, model)
+          setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
+          setLectures((ls) => [...ls, row])
+          setJob('ready')
+        } catch (err) {
+          setJob(`failed: ${err instanceof Error ? err.message : 'Something went wrong.'}`)
+          throw err
         }
-        const row = await store.addExtra(chapter.id, 'lecture', section, body, model)
-        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
-        setLectures((ls) => [...ls, row])
-        setLive((l) => ({ ...l, [id]: '', [prog]: '' }))
       })
     },
     [run, store, settings, known, teacher],
@@ -358,6 +393,10 @@ export default function App() {
 
   const removeExtra = async (chapter: TreeNode, x: Extra) => {
     if (!store) return
+    if (x.kind === 'lecture') {
+      setLectures((ls) => ls.filter((y) => y.id !== x.id))
+      void store.deleteAudio((x.body as LectureBody).audioUrl).catch(() => {})
+    }
     setExtras((e) => ({ ...e, [chapter.id]: (e[chapter.id] ?? []).filter((y) => y.id !== x.id) }))
     await store.removeExtra(x.id).catch(() => setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), x] })))
   }
@@ -558,7 +597,10 @@ export default function App() {
               .map((k) => k.slice(prefix.length))
           },
           run: (kind, key, req) => void runExtra(chapter, kind, key, { ...req, context: lessonText(lesson) }),
-          lecture: (section) => void runLecture(chapter, lesson, section),
+          lecture: (sections, length) => void runLecture(chapter, lesson, sections, length),
+          jobs: Object.entries(jobs)
+            .filter(([, j]) => j.chapterId === chapter.id && j.status !== 'ready')
+            .map(([id, j]) => ({ id, ...j })),
           remove: (x) => void removeExtra(chapter, x),
           teacher,
         }
@@ -734,12 +776,35 @@ export default function App() {
                   fixing={!!busy[liveKey(chapter.id, 'fix', '')]}
                   fixError={errors[liveKey(chapter.id, 'fix', '')] ?? ''}
                   onFix={(check) => lesson && void fixChapter(chapter, lesson, check)}
+                  openLectures={openLectures === chapter.id}
+                  onLecturesOpened={() => setOpenLectures('')}
                 />
               )}
             </>
           )}
         </div>
       </main>
+
+      <JobPill
+        jobs={jobs}
+        names={known}
+        onOpen={(id, chapterId) => {
+          setJobs((j) => {
+            const n = { ...j }
+            delete n[id]
+            return n
+          })
+          void openById(chapterId)
+          setOpenLectures(chapterId)
+        }}
+        onDismiss={(id) =>
+          setJobs((j) => {
+            const n = { ...j }
+            delete n[id]
+            return n
+          })
+        }
+      />
 
       {showSettings && (
         <SettingsSheet
@@ -767,4 +832,47 @@ function useWidth() {
     return () => window.removeEventListener('resize', on)
   }, [])
   return w
+}
+
+/** Floating status for lectures recording in the background. */
+function JobPill({
+  jobs,
+  names,
+  onOpen,
+  onDismiss,
+}: {
+  jobs: Record<string, { chapterId: string; label: string; status: string }>
+  names: Record<string, TreeNode>
+  onOpen: (id: string, chapterId: string) => void
+  onDismiss: (id: string) => void
+}) {
+  const list = Object.entries(jobs)
+  if (!list.length) return null
+  return (
+    <div className="job-pills" aria-live="polite">
+      {list.map(([id, j]) => {
+        const ready = j.status === 'ready'
+        const failed = j.status.startsWith('failed')
+        return (
+          <div key={id} className={`job-pill ${ready ? 'ready' : ''} ${failed ? 'failed' : ''}`}>
+            <button className="job-main" onClick={() => onOpen(id, j.chapterId)}>
+              {!ready && !failed && <span className="pulse" />}
+              <span className="job-text">
+                <b>{ready ? '🎧 Lecture ready' : failed ? 'Lecture failed' : `🎧 ${j.status}`}</b>
+                <small>
+                  {names[j.chapterId]?.title ?? ''} · {j.label}
+                  {failed ? ` · ${j.status.slice(8)}` : ''}
+                </small>
+              </span>
+            </button>
+            {(ready || failed) && (
+              <button className="job-x" onClick={() => onDismiss(id)} aria-label="Dismiss">
+                ×
+              </button>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
 }

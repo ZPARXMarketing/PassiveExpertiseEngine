@@ -14,6 +14,14 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Reader** — picking a chapter writes it: intro, sections, worked example, key terms, recap,
   self-check quiz. Previous / Next / Mark complete; the syllabus shows progress.
 - Everything is generated **once** and saved, so going back is instant and free.
+- **Every click is saved.** Explored tiles turn violet, completed chapters get a ✓, and opening
+  the app on any device resumes at the last thing you clicked.
+- **Folding panels.** Older panels fold out of the way (full → compact → slim strip) so the newest
+  always fits — more aggressively on phones. ‹ folds a panel, tapping a strip opens it, ☰ hides
+  the subject rail. On phones a breadcrumb trail jumps back to any level.
+- **Library tab** (pinned in the top bar). ☆ any course or chapter, or highlight chapter text →
+  **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
+  in catalog order, with search and Courses / Chapters / Highlights filters.
 
 ## Generation
 
@@ -25,8 +33,9 @@ DeepSeek through OpenRouter (`deepseek/deepseek-chat` by default). One Netlify f
 
 ## Storage
 
-Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`
-(migration: `supabase/migrations/20261004_expertise_engine_tree.sql`). The browser uses the
+Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`,
+`xe_visits`, `xe_saved` (migrations in `supabase/migrations/`, both applied). This is what syncs
+across devices. The browser uses the
 publishable key; RLS allows read + insert, and delete of whole subjects only.
 
 If those tables don't exist yet the app falls back to this device's localStorage (the rail shows

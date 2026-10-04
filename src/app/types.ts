@@ -45,3 +45,23 @@ export interface Lesson {
   recap: string[]
   quiz: { q: string; a: string }[]
 }
+
+/** A Library entry: a whole node (course, chapter…) or a highlighted snippet of a chapter. */
+export interface SavedItem {
+  id: string
+  node_id: string
+  kind: 'node' | 'snippet'
+  text: string
+  created_at: string
+}
+
+/** ids from the root down to this node, as far as `have` knows */
+export function chainIds(id: string, have: Record<string, TreeNode>): string[] {
+  const out: string[] = []
+  let cur: string | null = id
+  while (cur && out.length < 5) {
+    out.unshift(cur)
+    cur = have[cur]?.parent_id ?? null
+  }
+  return out
+}

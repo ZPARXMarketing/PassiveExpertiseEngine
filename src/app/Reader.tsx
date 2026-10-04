@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Star } from './Column.tsx'
 import type { Lesson, TreeNode } from './types.ts'
 
 interface Props {
@@ -15,6 +16,9 @@ interface Props {
   onGo: (n: TreeNode) => void
   onRetry: () => void
   onToggleDone: () => void
+  isSaved: boolean
+  onToggleSave: () => void
+  onSaveSnippet: (text: string) => void
 }
 
 const paras = (text: string) =>
@@ -26,13 +30,45 @@ const paras = (text: string) =>
 /** The final, wide panel: one chapter's generated text. */
 export function Reader(p: Props) {
   const { chapter, course, lesson } = p
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const [selection, setSelection] = useState('')
+  const [flash, setFlash] = useState(false)
+
+  // Highlight any text in the chapter → "Save highlight" puts it in the Library.
+  useEffect(() => {
+    const onSel = () => {
+      const sel = document.getSelection()
+      const inside = sel && sel.rangeCount && bodyRef.current?.contains(sel.anchorNode)
+      setSelection(inside ? sel.toString().trim() : '')
+    }
+    document.addEventListener('selectionchange', onSel)
+    return () => document.removeEventListener('selectionchange', onSel)
+  }, [])
+
+  const saveSelection = () => {
+    p.onSaveSnippet(selection)
+    document.getSelection()?.removeAllRanges()
+    setSelection('')
+    setFlash(true)
+    setTimeout(() => setFlash(false), 1600)
+  }
+
   return (
     <article className="column reader">
+      {selection.length > 2 && (
+        <button className="snip-btn" onMouseDown={(e) => e.preventDefault()} onClick={saveSelection}>
+          ★ Save highlight
+        </button>
+      )}
+      {flash && <div className="snip-flash">Saved to Library</div>}
       <header className="column-head">
         <span className="column-kicker">
           {course.meta.code || course.title} · Chapter {p.index + 1} of {p.total}
         </span>
-        <h2>{chapter.title}</h2>
+        <h2>
+          {chapter.title}
+          <Star on={p.isSaved} onClick={p.onToggleSave} label="chapter" />
+        </h2>
         {chapter.summary && <p className="column-desc">{chapter.summary}</p>}
       </header>
 
@@ -51,7 +87,7 @@ export function Reader(p: Props) {
       )}
 
       {lesson && (
-        <div className="lesson">
+        <div className="lesson" ref={bodyRef}>
           {paras(lesson.intro).map((t) => (
             <p key={t} className="lead">
               {t}

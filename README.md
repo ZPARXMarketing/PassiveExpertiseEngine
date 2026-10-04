@@ -28,14 +28,16 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 A **Study tools** switch in the reader (off by default, synced across devices) reveals:
 
 - **Go deeper ›** beside each section heading — a sub-lesson opens underneath, and its own
-  sections can go deeper again (3 levels).
+  sections can go deeper again (3 levels). With Study tools on, each deeper dive can be deleted.
 - **Ask a question** about the chapter, and **Practice problems** with hidden worked solutions.
 
-- **🎧 Lecture** for a section or the whole chapter: a spoken lecture script, recorded in your
-  teacher's voice (OpenAI voices via OpenRouter `/audio/speech`), saved as an MP3 in the
-  `xe-lectures` storage bucket. Play with speed control, download, or read the transcript; every
-  lecture is also under **Library → Lectures**. Voice, style and speed live in Settings (synced),
-  with a preview button.
+- **🎧 Lectures** (button in the chapter toolbar; a 🎧 badge on each section shows how many
+  lectures already cover it). Tick the whole chapter or any mix of sections, pick Short (~3 min),
+  Medium (~7) or Long (~12), and record. It records in the background — a pill in the corner shows
+  progress and "Lecture ready". Keep as many versions as you like; each has play with speed,
+  download, transcript and delete (removes the MP3 too). Every lecture is also under
+  **Library → Lectures**. Voice model, voice, style and speed live in Settings (synced); the voice
+  list comes live from OpenRouter so only supported voices are offered.
 - **📊 Add a chart** for a section: the AI picks a line / bar / scatter / pie chart or a flow
   diagram (or draws the one you describe). Charts become part of that section for good, so each
   chapter grows into your own textbook. Invented numbers are labelled "Illustrative".

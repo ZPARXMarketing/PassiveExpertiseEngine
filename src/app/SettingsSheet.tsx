@@ -1,6 +1,6 @@
-import { useRef, useState } from 'react'
-import { speak, type Settings } from './generate.ts'
-import { DEFAULT_MODEL, STYLES, VOICES } from './prompts.ts'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { looksLikeKey, speak, speechModels, type Settings } from './generate.ts'
+import { DEFAULT_MODEL, SPEECH_MODEL, STYLES, VOICES, type SpeechModel } from './prompts.ts'
 import type { Teacher } from './types.ts'
 
 interface Props {
@@ -23,15 +23,33 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
   /** voice+style → sample audio, so replaying a preview costs nothing */
   const samples = useRef(new Map<string, string>())
   const audio = useRef<HTMLAudioElement | null>(null)
+  /** voice models OpenRouter offers right now (falls back to the built-in list) */
+  const [models, setModels] = useState<SpeechModel[]>([])
+  const [defaultModel, setDefaultModel] = useState(SPEECH_MODEL)
+  useEffect(() => {
+    void speechModels(settings)
+      .then((r) => {
+        setModels(r.models)
+        setDefaultModel(r.defaultModel)
+      })
+      .catch(() => {})
+  }, [settings])
+  const model = t.model || defaultModel
+  const live = useMemo(() => models.find((m) => m.id === model)?.voices ?? [], [models, model])
+  const voices = live.length ? live : VOICES
+  // a saved voice the current model doesn't offer would fail; pick the first one it does
+  useEffect(() => {
+    if (live.length && !live.includes(t.voice)) setT((cur) => ({ ...cur, voice: live[0] }))
+  }, [live, t.voice])
 
   const preview = async () => {
-    const k = `${t.voice}:${t.style}`
+    const k = `${model}:${t.voice}:${t.style}`
     setPreviewErr('')
     try {
       let url = samples.current.get(k)
       if (!url) {
         setPreviewing(true)
-        url = URL.createObjectURL(await speak({ text: SAMPLE, voice: t.voice, style: t.style }, draft))
+        url = URL.createObjectURL(await speak({ text: SAMPLE, voice: t.voice, style: t.style, model: t.model }, draft))
         samples.current.set(k, url)
       }
       audio.current?.pause()
@@ -54,17 +72,32 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
           e.preventDefault()
           audio.current?.pause()
           onTeacher(t)
-          onSave({ ...draft, model: draft.model.trim() || DEFAULT_MODEL })
+          onSave({
+            openRouterKey: looksLikeKey(draft.openRouterKey) ? draft.openRouterKey.trim() : '',
+            model: draft.model.trim() || DEFAULT_MODEL,
+          })
         }}
       >
         <h2>Settings</h2>
 
         <h3 className="sheet-sub">Teacher voice</h3>
+        {models.length > 1 && (
+          <label>
+            Voice model
+            <select value={model} onChange={(e) => setT({ ...t, model: e.target.value === defaultModel ? undefined : e.target.value })}>
+              {models.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <div className="sheet-grid">
           <label>
             Voice
             <select value={t.voice} onChange={(e) => setT({ ...t, voice: e.target.value })}>
-              {VOICES.map((v) => (
+              {voices.map((v) => (
                 <option key={v} value={v}>
                   {cap(v)}
                 </option>
@@ -101,14 +134,33 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
         <h3 className="sheet-sub">AI</h3>
         <label>
           OpenRouter key <small>optional: leave blank to use the site's key</small>
-          <input
-            type="password"
-            value={draft.openRouterKey}
-            onChange={(e) => setDraft({ ...draft, openRouterKey: e.target.value })}
-            placeholder="sk-or-…"
-            autoComplete="off"
-          />
+          {/* plain text field masked with CSS so browsers don't autofill the site password into it */}
+          <span className="key-row">
+            <input
+              type="text"
+              className="secret"
+              name="openrouter-api-key"
+              value={draft.openRouterKey}
+              onChange={(e) => setDraft({ ...draft, openRouterKey: e.target.value })}
+              placeholder="sk-or-…"
+              autoComplete="off"
+              autoCapitalize="off"
+              autoCorrect="off"
+              spellCheck={false}
+              data-1p-ignore
+              data-lpignore="true"
+              data-form-type="other"
+            />
+            {draft.openRouterKey && (
+              <button type="button" className="btn-ghost" onClick={() => setDraft({ ...draft, openRouterKey: '' })}>
+                Clear
+              </button>
+            )}
+          </span>
         </label>
+        {draft.openRouterKey && !looksLikeKey(draft.openRouterKey) && (
+          <p className="error">That isn't an OpenRouter key (they start with sk-or-). It won't be saved; the site's key is used.</p>
+        )}
         <label>
           Model
           <input value={draft.model} onChange={(e) => setDraft({ ...draft, model: e.target.value })} />

@@ -103,19 +103,29 @@ export const liveKey = (chapterId: string, kind: string, key: string) => `${chap
 export interface Teacher {
   voice: string
   style: string
+  /** TTS model slug; unset = site default */
+  model?: string
   /** playback speed */
   speed: number
 }
+
+export type LectureLength = 'short' | 'medium' | 'long'
 
 export interface LectureBody {
   script: string
   audioUrl: string
   voice: string
   style: string
-  /** section heading, or '' for the whole chapter */
-  section: string
+  /** section headings covered; empty = whole chapter */
+  sections?: string[]
+  /** older lectures: single section, '' = whole chapter */
+  section?: string
+  length?: LectureLength
   fileName: string
 }
+
+export const lectureSections = (b: LectureBody): string[] => b.sections ?? (b.section ? [b.section] : [])
+export const lectureTitle = (b: LectureBody) => lectureSections(b).join(' + ') || 'Whole chapter'
 
 export interface ChartSpec {
   type: 'line' | 'bar' | 'scatter' | 'pie' | 'flow'
@@ -134,3 +144,15 @@ export interface ChartSpec {
   /** what the learner asked for, if anything */
   request?: string
 }
+
+/** How many saved lectures cover each section ('' = whole-chapter lectures). */
+export function lectureCounts(extras: Extra[]): Map<string, number> {
+  const m = new Map<string, number>()
+  for (const x of extras) {
+    if (x.kind !== 'lecture') continue
+    const secs = lectureSections(x.body as LectureBody)
+    for (const k of secs.length ? secs : ['']) m.set(k, (m.get(k) ?? 0) + 1)
+  }
+  return m
+}
+

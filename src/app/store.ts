@@ -44,6 +44,7 @@ export interface Store {
   removeExtra(id: string): Promise<void>
   /** store an MP3, return a URL any device can play */
   uploadAudio(path: string, audio: Blob): Promise<string>
+  deleteAudio(url: string): Promise<void>
   pref<T>(key: string): Promise<T | null>
   setPref(key: string, value: unknown): Promise<void>
 }
@@ -149,6 +150,14 @@ const cloud: Store = {
     })
     if (!res.ok) throw new Error(`Could not save the audio (${res.status}).`)
     return `${SUPABASE_URL}/storage/v1/object/public/xe-lectures/${path}`
+  },
+  deleteAudio: async (url) => {
+    const path = url.split('/public/xe-lectures/')[1]
+    if (!path) return
+    await fetch(`${SUPABASE_URL}/storage/v1/object/xe-lectures/${path}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}` },
+    })
   },
   pref: async <T,>(key: string) => {
     const rows = await rest<{ value: T }[]>(`xe_prefs?key=eq.${encodeURIComponent(key)}&select=value`)
@@ -269,6 +278,7 @@ function makeDevice(): Store {
     },
     // this-device mode can't keep audio files; the lecture plays for this visit only
     uploadAudio: async (_path, audio) => URL.createObjectURL(audio),
+    deleteAudio: async (url) => URL.revokeObjectURL(url),
     pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
     setPref: async (key, value) => {
       ;(d.prefs ??= {})[key] = value

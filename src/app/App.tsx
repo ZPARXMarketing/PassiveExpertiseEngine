@@ -530,10 +530,16 @@ export default function App() {
     }
   }
 
-  const saveSnippet = async (node: TreeNode, text: string) => {
+  const saveSnippet = async (node: TreeNode, text: string, color = 'yellow') => {
     if (!store) return
-    const row = await store.addSaved({ node_id: node.id, kind: 'snippet', text: text.slice(0, 4000) })
+    const row = await store.addSaved({ node_id: node.id, kind: 'snippet', text: text.slice(0, 4000), color })
     setSaved((s) => [...s, row])
+  }
+
+  const recolor = async (item: SavedItem, color: string) => {
+    if (!store) return
+    setSaved((s) => s.map((x) => (x.id === item.id ? { ...x, color } : x)))
+    await store.recolorSaved(item.id, color).catch(() => setSaved((s) => s.map((x) => (x.id === item.id ? item : x))))
   }
 
   const removeSaved = async (item: SavedItem) => {
@@ -806,7 +812,10 @@ export default function App() {
                     onToggleDone={() => void toggleDone(chapter.id)}
                     isSaved={savedNode.has(chapter.id)}
                     onToggleSave={() => void toggleSave(chapter)}
-                    onSaveSnippet={(t) => void saveSnippet(chapter, t)}
+                    onSaveSnippet={(t, c) => void saveSnippet(chapter, t, c)}
+                    highlights={saved.filter((x) => x.kind === 'snippet' && x.node_id === chapter.id)}
+                    onRecolor={(x, c) => void recolor(x, c)}
+                    onRemoveHighlight={(x) => void removeSaved(x)}
                     studyTools={studyTools}
                     onToggleStudyTools={toggleStudyTools}
                     tools={tools ?? EMPTY_TOOLS}

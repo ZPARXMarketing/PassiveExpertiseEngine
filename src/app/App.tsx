@@ -33,6 +33,7 @@ import {
 } from './types.ts'
 import { Column, type Fold } from './Column.tsx'
 import { Library } from './Library.tsx'
+import { AudioProvider } from './MiniPlayer.tsx'
 import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
@@ -609,218 +610,219 @@ export default function App() {
 
   return (
     <div className={`shell ${railOpen ? 'rail-open' : ''} ${railHidden ? 'rail-hidden' : ''} tab-${tab}`}>
-      <header className="topbar">
-        <button
-          className="icon-btn rail-toggle"
-          onClick={() => (width <= 900 ? setRailOpen((o) => !o) : setRailHidden((h) => !h))}
-          aria-label="Toggle subjects"
-        >
-          ☰
-        </button>
-        <div className="brand">
-          <span className="brand-mark">◆</span>
-          <span className="brand-name">Expertise Engine</span>
-        </div>
-        <form
-          className="topic-form"
-          onSubmit={(e) => {
-            e.preventDefault()
-            void submitTopic(topic)
-          }}
-        >
-          <input
-            value={topic}
-            onChange={(e) => setTopic(e.target.value)}
-            placeholder="What do you want to learn?"
-            aria-label="Topic"
-            enterKeyHint="go"
-          />
-          <button className="btn-neon" disabled={!topic.trim() || !store}>
-            Learn
+      <AudioProvider store={store} speed={teacher.speed}>
+        <header className="topbar">
+          <button
+            className="icon-btn rail-toggle"
+            onClick={() => (width <= 900 ? setRailOpen((o) => !o) : setRailHidden((h) => !h))}
+            aria-label="Toggle subjects"
+          >
+            ☰
           </button>
-        </form>
-        <nav className="tabs" aria-label="View">
-          <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
-            Explore
-          </button>
-          <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
-            Library{saved.length > 0 && <span className="count">{saved.length}</span>}
-          </button>
-        </nav>
-        <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
-          ⚙
-        </button>
-      </header>
-
-      <aside className="rail">
-        <div className="rail-head">
-          <span>Subjects</span>
-          {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
-        </div>
-        {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
-        <ul>
-          {subjects.map((s) => (
-            <li key={s.id}>
-              <button
-                className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                onClick={() => select(s, 0, [])}
-              >
-                {s.title}
-              </button>
-              <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
-                ×
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="legend">
-          <span>
-            <i className="dot seen" /> explored
-          </span>
-          <span>
-            <i className="dot done" /> completed
-          </span>
-          <span>
-            <i className="dot star" /> saved
-          </span>
-        </div>
-      </aside>
-      <div className="rail-scrim" onClick={() => setRailOpen(false)} />
-
-      {tab === 'library' && (
-        <Library
-          saved={saved}
-          lectures={lectures}
-          speed={teacher.speed}
-          nodes={known}
-          docs={docs}
-          done={done}
-          loadAncestors={loadAncestors}
-          onOpen={(id) => void openById(id)}
-          onRemove={(x) => void removeSaved(x)}
-        />
-      )}
-
-      <main className="explore" hidden={tab !== 'explore'}>
-        {path.length > 1 && (
-          <nav className="crumbs" aria-label="Trail">
-            {path.map((n, i) => (
-              <button
-                key={n.id}
-                className={i === path.length - 1 ? 'here' : ''}
-                onClick={() => (n.level === 'chapter' ? undefined : focusPanel(n.id))}
-              >
-                {n.meta.code || n.title}
-              </button>
-            ))}
+          <div className="brand">
+            <span className="brand-mark">◆</span>
+            <span className="brand-name">Expertise Engine</span>
+          </div>
+          <form
+            className="topic-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void submitTopic(topic)
+            }}
+          >
+            <input
+              value={topic}
+              onChange={(e) => setTopic(e.target.value)}
+              placeholder="What do you want to learn?"
+              aria-label="Topic"
+              enterKeyHint="go"
+            />
+            <button className="btn-neon" disabled={!topic.trim() || !store}>
+              Learn
+            </button>
+          </form>
+          <nav className="tabs" aria-label="View">
+            <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
+              Explore
+            </button>
+            <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
+              Library{saved.length > 0 && <span className="count">{saved.length}</span>}
+            </button>
           </nav>
+          <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
+            ⚙
+          </button>
+        </header>
+
+        <aside className="rail">
+          <div className="rail-head">
+            <span>Subjects</span>
+            {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+          </div>
+          {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
+          <ul>
+            {subjects.map((s) => (
+              <li key={s.id}>
+                <button
+                  className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                  onClick={() => select(s, 0, [])}
+                >
+                  {s.title}
+                </button>
+                <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="legend">
+            <span>
+              <i className="dot seen" /> explored
+            </span>
+            <span>
+              <i className="dot done" /> completed
+            </span>
+            <span>
+              <i className="dot star" /> saved
+            </span>
+          </div>
+        </aside>
+        <div className="rail-scrim" onClick={() => setRailOpen(false)} />
+
+        {tab === 'library' && (
+          <Library
+            saved={saved}
+            lectures={lectures}
+            nodes={known}
+            docs={docs}
+            done={done}
+            loadAncestors={loadAncestors}
+            onOpen={(id) => void openById(id)}
+            onRemove={(x) => void removeSaved(x)}
+          />
         )}
-        <div className="columns" ref={columnsRef}>
-          {errors.topic && <p className="error">{errors.topic}</p>}
-          {path.length === 0 ? (
-            <div className="hero">
-              <h1>Pick a subject. Drill down. Learn it like a degree.</h1>
-              <p>Subject → branches → courses → syllabus → chapters, each written for you as you go.</p>
-              <div className="chips">
-                {SUGGESTIONS.map((s) => (
-                  <button key={s} className="chip" onClick={() => void submitTopic(s)} disabled={!store}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <>
-              {panels.map((parent, depth) => (
-                  <Column
-                    key={parent.id}
-                    fold={folds[parent.id] ?? autoFolds[depth]}
-                    onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
-                    selectedTitle={path[depth + 1]?.title}
-                    parent={parent}
-                    items={kids[parent.id]}
-                    preview={preview[parent.id]}
-                    syllabus={docs[parent.id] as Syllabus | undefined}
-                    loading={!!busy[parent.id]}
-                    error={errors[parent.id]}
-                    selectedId={path[depth + 1]?.id}
-                    done={done}
-                    visited={visited}
-                    savedIds={savedNode}
-                    onToggleSave={(n) => void toggleSave(n)}
-                    onSelect={(n) => select(n, depth + 1)}
-                    onRetry={() => retry(depth)}
-                  />
-                ))}
-              {chapter && (
-                <Reader
-                  key={chapter.id}
-                  chapter={chapter}
-                  course={path[2]}
-                  lesson={lesson}
-                  loading={!!busy[chapter.id]}
-                  error={errors[chapter.id]}
-                  isDone={done.has(chapter.id)}
-                  index={chapterIdx}
-                  total={chapterSiblings.length}
-                  prev={chapterSiblings[chapterIdx - 1]}
-                  next={chapterSiblings[chapterIdx + 1]}
-                  onGo={(n) => select(n, 3)}
-                  onRetry={() => retry(3)}
-                  onToggleDone={() => void toggleDone(chapter.id)}
-                  isSaved={savedNode.has(chapter.id)}
-                  onToggleSave={() => void toggleSave(chapter)}
-                  onSaveSnippet={(t) => void saveSnippet(chapter, t)}
-                  studyTools={studyTools}
-                  onToggleStudyTools={toggleStudyTools}
-                  tools={tools ?? EMPTY_TOOLS}
-                  fixing={!!busy[liveKey(chapter.id, 'fix', '')]}
-                  fixError={errors[liveKey(chapter.id, 'fix', '')] ?? ''}
-                  onFix={(check) => lesson && void fixChapter(chapter, lesson, check)}
-                  openLectures={openLectures === chapter.id}
-                  onLecturesOpened={() => setOpenLectures('')}
-                />
-              )}
-            </>
+
+        <main className="explore" hidden={tab !== 'explore'}>
+          {path.length > 1 && (
+            <nav className="crumbs" aria-label="Trail">
+              {path.map((n, i) => (
+                <button
+                  key={n.id}
+                  className={i === path.length - 1 ? 'here' : ''}
+                  onClick={() => (n.level === 'chapter' ? undefined : focusPanel(n.id))}
+                >
+                  {n.meta.code || n.title}
+                </button>
+              ))}
+            </nav>
           )}
-        </div>
-      </main>
+          <div className="columns" ref={columnsRef}>
+            {errors.topic && <p className="error">{errors.topic}</p>}
+            {path.length === 0 ? (
+              <div className="hero">
+                <h1>Pick a subject. Drill down. Learn it like a degree.</h1>
+                <p>Subject → branches → courses → syllabus → chapters, each written for you as you go.</p>
+                <div className="chips">
+                  {SUGGESTIONS.map((s) => (
+                    <button key={s} className="chip" onClick={() => void submitTopic(s)} disabled={!store}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <>
+                {panels.map((parent, depth) => (
+                    <Column
+                      key={parent.id}
+                      fold={folds[parent.id] ?? autoFolds[depth]}
+                      onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
+                      selectedTitle={path[depth + 1]?.title}
+                      parent={parent}
+                      items={kids[parent.id]}
+                      preview={preview[parent.id]}
+                      syllabus={docs[parent.id] as Syllabus | undefined}
+                      loading={!!busy[parent.id]}
+                      error={errors[parent.id]}
+                      selectedId={path[depth + 1]?.id}
+                      done={done}
+                      visited={visited}
+                      savedIds={savedNode}
+                      onToggleSave={(n) => void toggleSave(n)}
+                      onSelect={(n) => select(n, depth + 1)}
+                      onRetry={() => retry(depth)}
+                    />
+                  ))}
+                {chapter && (
+                  <Reader
+                    key={chapter.id}
+                    chapter={chapter}
+                    course={path[2]}
+                    lesson={lesson}
+                    loading={!!busy[chapter.id]}
+                    error={errors[chapter.id]}
+                    isDone={done.has(chapter.id)}
+                    index={chapterIdx}
+                    total={chapterSiblings.length}
+                    prev={chapterSiblings[chapterIdx - 1]}
+                    next={chapterSiblings[chapterIdx + 1]}
+                    onGo={(n) => select(n, 3)}
+                    onRetry={() => retry(3)}
+                    onToggleDone={() => void toggleDone(chapter.id)}
+                    isSaved={savedNode.has(chapter.id)}
+                    onToggleSave={() => void toggleSave(chapter)}
+                    onSaveSnippet={(t) => void saveSnippet(chapter, t)}
+                    studyTools={studyTools}
+                    onToggleStudyTools={toggleStudyTools}
+                    tools={tools ?? EMPTY_TOOLS}
+                    fixing={!!busy[liveKey(chapter.id, 'fix', '')]}
+                    fixError={errors[liveKey(chapter.id, 'fix', '')] ?? ''}
+                    onFix={(check) => lesson && void fixChapter(chapter, lesson, check)}
+                    openLectures={openLectures === chapter.id}
+                    onLecturesOpened={() => setOpenLectures('')}
+                  />
+                )}
+              </>
+            )}
+          </div>
+        </main>
 
-      <JobPill
-        jobs={jobs}
-        names={known}
-        onOpen={(id, chapterId) => {
-          setJobs((j) => {
-            const n = { ...j }
-            delete n[id]
-            return n
-          })
-          void openById(chapterId)
-          setOpenLectures(chapterId)
-        }}
-        onDismiss={(id) =>
-          setJobs((j) => {
-            const n = { ...j }
-            delete n[id]
-            return n
-          })
-        }
-      />
-
-      {showSettings && (
-        <SettingsSheet
-          settings={settings}
-          mode={store?.mode}
-          teacher={teacher}
-          onTeacher={saveTeacher}
-          onSave={(s) => {
-            setSettings(s)
-            saveSettings(s)
-            setShowSettings(false)
+        <JobPill
+          jobs={jobs}
+          names={known}
+          onOpen={(id, chapterId) => {
+            setJobs((j) => {
+              const n = { ...j }
+              delete n[id]
+              return n
+            })
+            void openById(chapterId)
+            setOpenLectures(chapterId)
           }}
-          onClose={() => setShowSettings(false)}
+          onDismiss={(id) =>
+            setJobs((j) => {
+              const n = { ...j }
+              delete n[id]
+              return n
+            })
+          }
         />
-      )}
+
+        {showSettings && (
+          <SettingsSheet
+            settings={settings}
+            mode={store?.mode}
+            teacher={teacher}
+            onTeacher={saveTeacher}
+            onSave={(s) => {
+              setSettings(s)
+              saveSettings(s)
+              setShowSettings(false)
+            }}
+            onClose={() => setShowSettings(false)}
+          />
+        )}
+      </AudioProvider>
     </div>
   )
 }

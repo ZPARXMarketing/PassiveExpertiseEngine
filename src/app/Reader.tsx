@@ -135,7 +135,13 @@ export function Reader(p: Props) {
           </div>
         )}
         {sheet && lesson && (
-          <LectureSheet ctx={tools} headings={lesson.sections.map((s) => s.heading)} preselect={sheet} onClose={() => setSheet(null)} />
+          <LectureSheet
+            ctx={tools}
+            headings={lesson.sections.map((s) => s.heading)}
+            chapterTitle={chapter.title}
+            preselect={sheet}
+            onClose={() => setSheet(null)}
+          />
         )}
       </header>
 

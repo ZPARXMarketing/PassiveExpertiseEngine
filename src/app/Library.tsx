@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Player } from './Study.tsx'
+import { LectureControl } from './Study.tsx'
 import { chainIds, lectureTitle, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
@@ -7,7 +7,6 @@ type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 interface Props {
   saved: SavedItem[]
   lectures: Extra[]
-  speed: number
   nodes: Record<string, TreeNode>
   docs: Record<string, unknown>
   done: Set<string>
@@ -43,7 +42,7 @@ const byPos = (a: { node: TreeNode }, b: { node: TreeNode }) => a.node.position 
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, speed, nodes, docs, done, loadAncestors, onOpen, onRemove }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove }: Props) {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
@@ -195,7 +194,13 @@ export function Library({ saved, lectures, speed, nodes, docs, done, loadAncesto
                             return (
                               <div key={l.id} className="lib-lecture">
                                 <div className="lib-lecture-title">🎧 {lectureTitle(b)}</div>
-                                <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
+                                <LectureControl
+                                  id={l.id}
+                                  url={b.audioUrl}
+                                  title={lectureTitle(b)}
+                                  subtitle={ch.node.title}
+                                  fileName={b.fileName}
+                                />
                               </div>
                             )
                           })}

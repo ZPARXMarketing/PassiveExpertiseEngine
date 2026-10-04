@@ -116,6 +116,12 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
         <p className="sheet-note">
           Storage: {mode === 'cloud' ? 'synced to Supabase.' : 'this device only (Supabase tables not set up yet).'}
         </p>
+        <p className="sheet-note">
+          <a className="lock-link" href="/__logout">
+            Lock this device
+          </a>{' '}
+          (asks for the site password again)
+        </p>
         <div className="sheet-actions">
           <button type="button" className="btn-ghost" onClick={onClose}>
             Cancel

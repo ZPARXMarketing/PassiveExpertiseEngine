@@ -7,3 +7,8 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Password gate (APP_PASSWORD) runs before everything, including the /api/* edge functions.
+[[edge_functions]]
+  path = "/*"
+  function = "auth"

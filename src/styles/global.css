@@ -2035,3 +2035,9 @@ button:disabled {
   font-size: 12px;
   color: var(--text-faint) !important;
 }
+
+.lock-link {
+  color: var(--danger);
+  text-decoration: none;
+  font-weight: 600;
+}

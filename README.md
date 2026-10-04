@@ -57,6 +57,14 @@ is written in the background while you read.
 - Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL`, `OPENROUTER_TTS_MODEL` (optional).
 - Or paste a key in **Settings** (⚙) — then that browser calls OpenRouter directly.
 
+## Password
+
+`netlify/edge-functions/auth.ts` runs first on every path (declared in `netlify.toml`) and asks
+for the password in the `APP_PASSWORD` site environment variable — pages, the app bundle and
+`/api/*` are all behind it. Each device stays signed in (HttpOnly cookie, one year); changing the
+password signs every device out; **Settings → Lock this device** signs one out. With
+`APP_PASSWORD` unset the site is open.
+
 ## Storage
 
 Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`,

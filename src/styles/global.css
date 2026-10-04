@@ -36,6 +36,27 @@ button {
   text-align: inherit;
 }
 
+/* short controls centre their label (the reset above left-aligns, which tiles rely on) */
+.btn-neon,
+.btn-ghost,
+.chip,
+.tabs button,
+.lecture-chip,
+.deeper-chip,
+.check-btn,
+.lect-play,
+.mp-controls button,
+.fold-btns button,
+.icon-btn,
+.job-x,
+.mp-close,
+.visual-x,
+.lib-x,
+.star {
+  text-align: center;
+  justify-content: center;
+}
+
 button:disabled {
   cursor: default;
   opacity: 0.4;
@@ -1782,12 +1803,6 @@ button:disabled {
   font-size: 13px;
 }
 
-.player audio {
-  width: 100%;
-  height: 40px;
-}
-
-.player-row,
 .lecture-row {
   display: flex;
   flex-wrap: wrap;
@@ -1795,25 +1810,6 @@ button:disabled {
   justify-content: space-between;
   gap: 8px;
   margin-top: 6px;
-}
-
-.speeds {
-  display: flex;
-  gap: 4px;
-}
-
-.speeds button {
-  min-width: 44px;
-  height: 32px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  font-size: 13px;
-  color: var(--text-dim);
-}
-
-.speeds button.on {
-  border-color: var(--amber);
-  color: var(--amber);
 }
 
 .download {

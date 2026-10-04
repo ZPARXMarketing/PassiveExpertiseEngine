@@ -53,6 +53,7 @@ export function Reader(p: Props) {
   const [flash, setFlash] = useState(false)
   const [deeper, setDeeper] = useState<Set<string>>(new Set())
   const [visuals, setVisuals] = useState<Set<string>>(new Set())
+  const [checkOpen, setCheckOpen] = useState(false)
   const toggleVisual = (k: string) =>
     setVisuals((o) => {
       const n = new Set(o)
@@ -117,7 +118,10 @@ export function Reader(p: Props) {
           <Star on={p.isSaved} onClick={p.onToggleSave} label="chapter" />
         </h2>
         {chapter.summary && <p className="column-desc">{chapter.summary}</p>}
-        {lesson && !p.loading && (
+      </header>
+      {/* sticks to the top of the reader while you scroll the chapter */}
+      {lesson && !p.loading && (
+        <>
           <div className="reader-tools">
             <label className={`switch ${studyTools ? 'on' : ''}`}>
               <input type="checkbox" checked={studyTools} onChange={p.onToggleStudyTools} />
@@ -131,19 +135,36 @@ export function Reader(p: Props) {
                 {tools.jobs.length ? <span className="pulse" /> : null}🎧 Lectures{lectureTotal ? ` (${lectureTotal})` : ''}
               </button>
             )}
-            <FactCheck ctx={tools} fixing={p.fixing} fixError={p.fixError} onFix={p.onFix} />
+            <FactCheck
+              ctx={tools}
+              fixing={p.fixing}
+              fixError={p.fixError}
+              onFix={p.onFix}
+              part="button"
+              open={checkOpen}
+              setOpen={setCheckOpen}
+            />
           </div>
-        )}
-        {sheet && lesson && (
-          <LectureSheet
+          <FactCheck
             ctx={tools}
-            headings={lesson.sections.map((s) => s.heading)}
-            chapterTitle={chapter.title}
-            preselect={sheet}
-            onClose={() => setSheet(null)}
+            fixing={p.fixing}
+            fixError={p.fixError}
+            onFix={p.onFix}
+            part="panel"
+            open={checkOpen}
+            setOpen={setCheckOpen}
           />
-        )}
-      </header>
+        </>
+      )}
+      {sheet && lesson && (
+        <LectureSheet
+          ctx={tools}
+          headings={lesson.sections.map((s) => s.heading)}
+          chapterTitle={chapter.title}
+          preselect={sheet}
+          onClose={() => setSheet(null)}
+        />
+      )}
 
       {p.loading && !lesson && <Writing label="Writing this chapter…" />}
       {p.error && (

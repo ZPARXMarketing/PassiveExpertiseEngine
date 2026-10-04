@@ -19,9 +19,13 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Folding panels.** Older panels fold out of the way (full → compact → slim strip) so the newest
   always fits — more aggressively on phones. ‹ folds a panel, tapping a strip opens it, ☰ hides
   the subject rail. On phones a breadcrumb trail jumps back to any level.
+- **Each subject remembers where you were.** Hop Music → Physics → Chemistry → back to Music and
+  you land exactly where you left Music (tap the subject you're in to go back to its top). Synced.
+- **Study tools toolbar stays frozen** at the top of the chapter while you scroll.
 - **Library tab** (pinned in the top bar). ☆ any course or chapter, or highlight chapter text →
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
-  in catalog order, with search and Courses / Chapters / Highlights filters.
+  in catalog order, with search, type filters, sort (course order / recently saved / A–Z), fold any
+  subject or course, Open all / Close all — and it reopens exactly how you left it.
 
 ## Study tools
 

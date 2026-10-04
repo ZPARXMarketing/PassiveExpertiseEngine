@@ -12,6 +12,7 @@ import {
   completionBody,
   listSpeechModels,
   pickSpeechModel,
+  sortVoices,
   modelFor,
   sseToText,
   synthesize,
@@ -153,8 +154,35 @@ export async function record(
     }
   }
   await Promise.all([worker(), worker(), worker()])
-  // MP3 frames are self-contained, so concatenated chunks play as one file
-  return new Blob(parts, { type: 'audio/mpeg' })
+  if (parts.every((p) => !/pcm|l16/i.test(p.type))) {
+    // MP3 frames are self-contained, so concatenated chunks play as one file
+    return new Blob(parts, { type: 'audio/mpeg' })
+  }
+  return pcmToWav(parts)
+}
+
+/** Raw 16-bit PCM chunks (audio/pcm;rate=…;channels=…) → one playable WAV. */
+async function pcmToWav(parts: Blob[]): Promise<Blob> {
+  const t = parts.find((p) => /pcm|l16/i.test(p.type))?.type ?? ''
+  const rate = Number(t.match(/rate=(\d+)/)?.[1] ?? 24000)
+  const channels = Number(t.match(/channels=(\d+)/)?.[1] ?? 1)
+  const pcm = new Uint8Array(await new Blob(parts).arrayBuffer())
+  const h = new DataView(new ArrayBuffer(44))
+  const str = (o: number, s: string) => [...s].forEach((c, i) => h.setUint8(o + i, c.charCodeAt(0)))
+  str(0, 'RIFF')
+  h.setUint32(4, 36 + pcm.length, true)
+  str(8, 'WAVE')
+  str(12, 'fmt ')
+  h.setUint32(16, 16, true)
+  h.setUint16(20, 1, true)
+  h.setUint16(22, channels, true)
+  h.setUint32(24, rate, true)
+  h.setUint32(28, rate * channels * 2, true)
+  h.setUint16(32, channels * 2, true)
+  h.setUint16(34, 16, true)
+  str(36, 'data')
+  h.setUint32(40, pcm.length, true)
+  return new Blob([h.buffer, pcm], { type: 'audio/wav' })
 }
 
 let modelsCache: Promise<{ models: SpeechModel[]; defaultModel: string }> | null = null
@@ -164,6 +192,6 @@ export async function resolveVoice(voice: string, model: string | undefined, set
   modelsCache ??= speechModels(settings).catch(() => ({ models: [], defaultModel: SPEECH_MODEL }))
   const { models, defaultModel } = await modelsCache
   const m = pickSpeechModel(models, model || defaultModel)
-  const voices = models.find((x) => x.id === m)?.voices ?? []
+  const voices = sortVoices(models.find((x) => x.id === m)?.voices ?? [])
   return { voice: !voices.length || voices.includes(voice) ? voice : voices[0], model: m }
 }

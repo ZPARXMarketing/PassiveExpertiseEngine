@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { latest, paras, parseCheck, parsePractice, parseSections } from './parse.ts'
 import { Chart } from './Chart.tsx'
-import { LECTURE_LENGTHS, STYLES } from './prompts.ts'
+import { LECTURE_LENGTHS, voiceLabel } from './prompts.ts'
 import {
   lectureCounts,
   lectureTitle,
@@ -387,7 +387,7 @@ export function LectureSheet({
   const [started, setStarted] = useState(false)
   const counts = lectureCounts(ctx.extras)
   const mine = ctx.extras.filter((x) => x.kind === 'lecture').reverse()
-  const voice = `${cap(ctx.teacher.voice)} · ${STYLES[ctx.teacher.style]?.label ?? ''}`
+  const voice = voiceLabel(ctx.teacher.voice)
   const canRecord = whole || picked.size > 0
 
   const toggle = (h: string) => {
@@ -484,7 +484,7 @@ function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete
       <div className="lect-title">{lectureTitle(b)}</div>
       <div className="lect-meta">
         {b.length ? `${LECTURE_LENGTHS[b.length].label} · ` : ''}
-        {cap(b.voice)} · {new Date(x.created_at).toLocaleDateString()}
+        {voiceLabel(b.voice)} · {new Date(x.created_at).toLocaleDateString()}
       </div>
       <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
       <div className="lecture-row">
@@ -508,7 +508,6 @@ function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete
 
 const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
 
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export function Player({ url, fileName, speed }: { url: string; fileName: string; speed: number }) {
   const ref = useRef<HTMLAudioElement>(null)

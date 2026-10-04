@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { looksLikeKey, speak, speechModels, type Settings } from './generate.ts'
-import { DEFAULT_MODEL, SPEECH_MODEL, STYLES, VOICES, type SpeechModel } from './prompts.ts'
+import { DEFAULT_MODEL, DEFAULT_VOICE, SPEECH_MODEL, STYLES, sortVoices, voiceLabel, type SpeechModel } from './prompts.ts'
 import type { Teacher } from './types.ts'
 
 interface Props {
@@ -13,7 +13,6 @@ interface Props {
 }
 
 const SAMPLE = "Hi, I'm your teacher for this course. Let's start with the one idea that makes everything else in this chapter click."
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onClose }: Props) {
   const [draft, setDraft] = useState(settings)
@@ -35,8 +34,10 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
       .catch(() => {})
   }, [settings])
   const model = t.model || defaultModel
-  const live = useMemo(() => models.find((m) => m.id === model)?.voices ?? [], [models, model])
-  const voices = live.length ? live : VOICES
+  const live = useMemo(() => sortVoices(models.find((m) => m.id === model)?.voices ?? []), [models, model])
+  const voices = live.length ? live : [t.voice || DEFAULT_VOICE]
+  /** only OpenAI voice models take a speaking-style instruction */
+  const styled = model.startsWith('openai/')
   // a saved voice the current model doesn't offer would fail; pick the first one it does
   useEffect(() => {
     if (live.length && !live.includes(t.voice)) setT((cur) => ({ ...cur, voice: live[0] }))
@@ -99,12 +100,12 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
             <select value={t.voice} onChange={(e) => setT({ ...t, voice: e.target.value })}>
               {voices.map((v) => (
                 <option key={v} value={v}>
-                  {cap(v)}
+                  {voiceLabel(v)}
                 </option>
               ))}
             </select>
           </label>
-          <label>
+          <label hidden={!styled}>
             Style
             <select value={t.style} onChange={(e) => setT({ ...t, style: e.target.value })}>
               {Object.entries(STYLES).map(([k, s]) => (

@@ -39,7 +39,9 @@ export default async (req: Request) => {
       'HTTP-Referer': Netlify.env.get('URL') || 'https://passiveexpertise.netlify.app',
     })
     if (!out.ok) return json({ error: `Voice service returned ${out.status}: ${out.detail || 'no detail'}` }, 502)
-    return new Response(out.res.body, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' } })
+    // most models honour mp3; pass through whatever came back (some send raw pcm)
+    const type = out.res.headers.get('content-type') || 'audio/mpeg'
+    return new Response(out.res.body, { headers: { 'content-type': type, 'cache-control': 'no-store' } })
   } catch {
     return json({ error: 'Could not reach OpenRouter.' }, 502)
   }

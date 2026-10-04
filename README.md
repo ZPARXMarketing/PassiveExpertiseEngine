@@ -35,8 +35,10 @@ A **Study tools** switch in the reader (off by default, synced across devices) r
   lectures already cover it). Tick the whole chapter or any mix of sections, pick Short (~3 min),
   Medium (~7) or Long (~12), and record. It records in the background — a pill in the corner shows
   progress and "Lecture ready". Keep as many versions as you like; each has play with speed,
-  download, transcript and delete (removes the MP3 too). Every lecture is also under
-  **Library → Lectures**. Voice model, voice, style and speed live in Settings (synced); the voice
+  download, transcript and delete (removes the MP3 too). Lectures play in an app-wide
+  player bar that keeps going when the sheet closes or you move around (lock-screen/headphone
+  controls, ±15 s, speed); each lecture remembers where you stopped and shows ✓ Listened once
+  finished, synced across devices. Every lecture is also under **Library → Lectures**. Voice model, voice, style and speed live in Settings (synced); the voice
   list comes live from OpenRouter so only supported voices are offered.
 - **📊 Add a chart** for a section: the AI picks a line / bar / scatter / pie chart or a flow
   diagram (or draws the one you describe). Charts become part of that section for good, so each

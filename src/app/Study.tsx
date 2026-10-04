@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
+import { clock, useAudio, type Track } from './audio.ts'
 import { latest, paras, parseCheck, parsePractice, parseSections } from './parse.ts'
 import { Chart } from './Chart.tsx'
 import { LECTURE_LENGTHS, voiceLabel } from './prompts.ts'
@@ -373,11 +374,13 @@ export function LectureBadge({ count, onClick }: { count: number; onClick: () =>
 export function LectureSheet({
   ctx,
   headings,
+  chapterTitle,
   preselect,
   onClose,
 }: {
   ctx: ToolCtx
   headings: string[]
+  chapterTitle: string
   preselect: string[]
   onClose: () => void
 }) {
@@ -469,14 +472,19 @@ export function LectureSheet({
         <h3 className="sheet-sub">Your lectures ({mine.length})</h3>
         {!mine.length && <p className="sheet-note">None yet for this chapter.</p>}
         {mine.map((x) => (
-          <LectureItem key={x.id} x={x} speed={ctx.teacher.speed} onDelete={() => confirm('Delete this lecture and its audio?') && ctx.remove(x)} />
+          <LectureItem
+            key={x.id}
+            x={x}
+            subtitle={chapterTitle}
+            onDelete={() => confirm('Delete this lecture and its audio?') && ctx.remove(x)}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete: () => void }) {
+function LectureItem({ x, subtitle, onDelete }: { x: Extra; subtitle: string; onDelete: () => void }) {
   const b = x.body as LectureBody
   const [script, setScript] = useState(false)
   return (
@@ -486,7 +494,7 @@ function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete
         {b.length ? `${LECTURE_LENGTHS[b.length].label} · ` : ''}
         {voiceLabel(b.voice)} · {new Date(x.created_at).toLocaleDateString()}
       </div>
-      <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
+      <LectureControl id={x.id} url={b.audioUrl} title={lectureTitle(b)} subtitle={subtitle} fileName={b.fileName} />
       <div className="lecture-row">
         <button className="reveal" onClick={() => setScript((v) => !v)} aria-expanded={script}>
           {script ? 'Hide transcript' : 'Transcript'}
@@ -506,30 +514,38 @@ function LectureItem({ x, speed, onDelete }: { x: Extra; speed: number; onDelete
   )
 }
 
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
 
-
-export function Player({ url, fileName, speed }: { url: string; fileName: string; speed: number }) {
-  const ref = useRef<HTMLAudioElement>(null)
-  const [rate, setRate] = useState(speed)
-  useEffect(() => {
-    if (ref.current) ref.current.playbackRate = rate
-  }, [rate])
+/**
+ * Play / resume control for one lecture. Audio runs in the app-wide player, so it keeps
+ * going after this is closed; shows listened / resume state (synced).
+ */
+export function LectureControl({ id, url, title, subtitle, fileName }: Track) {
+  const audio = useAudio()
+  const p = audio.progress(id)
+  const isCurrent = audio.current?.id === id
+  const pos = isCurrent ? audio.position : (p?.pos ?? 0)
+  const dur = isCurrent ? audio.duration : (p?.dur ?? 0)
+  const pct = p?.done && !isCurrent ? 100 : dur ? Math.min(100, (pos / dur) * 100) : 0
   const download = url.startsWith('blob:') ? url : `${url}?download=${encodeURIComponent(fileName)}`
+  const label = isCurrent && audio.playing ? '❚❚ Pause' : pos > 5 && !p?.done ? `▶ Resume ${clock(pos)}` : p?.done ? '▶ Play again' : '▶ Play'
   return (
-    <div className="player">
-      <audio ref={ref} src={url} controls preload="metadata" onLoadedMetadata={(e) => (e.currentTarget.playbackRate = rate)} />
-      <div className="player-row">
-        <div className="speeds" role="group" aria-label="Speed">
-          {SPEEDS.map((s) => (
-            <button key={s} className={s === rate ? 'on' : ''} onClick={() => setRate(s)}>
-              {s}×
-            </button>
-          ))}
-        </div>
+    <div className="lect-control">
+      <div className="lect-row">
+        <button
+          className={`lect-play ${isCurrent && audio.playing ? 'on' : ''}`}
+          onClick={() => (isCurrent ? audio.toggle() : audio.play({ id, url, title, subtitle, fileName }))}
+        >
+          {label}
+        </button>
+        <span className={`lect-status ${p?.done ? 'done' : ''}`}>
+          {p?.done ? '✓ Listened' : dur ? `${clock(pos)} / ${clock(dur)}` : 'New'}
+        </span>
         <a className="download" href={download} download={fileName}>
-          ⬇ Download
+          ⬇
         </a>
+      </div>
+      <div className="lect-bar" aria-hidden="true">
+        <div style={{ width: `${pct}%` }} />
       </div>
     </div>
   )

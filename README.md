@@ -55,7 +55,7 @@ Text appears while it is written, OpenRouter routes to the fastest provider, and
 is written in the background while you read.
 
 - Writing: DeepSeek (`deepseek/deepseek-chat`). Fact-checks: `perplexity/sonar`.
-- Lectures: `netlify/edge-functions/speech.ts` (`POST /api/speech`), model `openai/gpt-4o-mini-tts-2025-12-15`.
+- Lectures: `netlify/edge-functions/speech.ts` (`POST /api/speech`); default voice model `microsoft/mai-voice-2.1-flash` (voice Harper, en-US); any of OpenRouter's speech models can be chosen in Settings, and if the preferred one isn't listed the closest listed one is used. Raw-PCM models are saved as WAV.
 - Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL`, `OPENROUTER_TTS_MODEL` (optional).
 - Or paste a key in **Settings** (⚙) — then that browser calls OpenRouter directly.
 

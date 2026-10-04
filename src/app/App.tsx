@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { generate, loadSettings, record, resolveVoice, saveSettings, type Settings } from './generate.ts'
-import type { GenKind, GenRequest } from './prompts.ts'
+import { DEFAULT_VOICE, type GenKind, type GenRequest } from './prompts.ts'
 import {
   applyFix,
   parseChart,
@@ -50,7 +50,7 @@ const EMPTY_TOOLS: ToolCtx = {
   lecture: () => {},
   jobs: [],
   remove: () => {},
-  teacher: { voice: 'alloy', style: 'professor', speed: 1 },
+  teacher: { voice: DEFAULT_VOICE, style: 'professor', speed: 1 },
 }
 
 /** At most one UI update per animation frame per stream. */
@@ -108,7 +108,7 @@ export default function App() {
   const [extras, setExtras] = useState<Record<string, Extra[]>>({})
   const [live, setLive] = useState<Record<string, string>>({})
   const [studyTools, setStudyTools] = useState(false)
-  const [teacher, setTeacher] = useState<Teacher>({ voice: 'alloy', style: 'professor', speed: 1 })
+  const [teacher, setTeacher] = useState<Teacher>({ voice: DEFAULT_VOICE, style: 'professor', speed: 1 })
   /** every lecture, for the Library (loaded when it opens) */
   const [lectures, setLectures] = useState<Extra[]>([])
   /** lectures being made in the background, by busy key */
@@ -367,7 +367,8 @@ export default function App() {
           )
           setJob('Saving…')
           const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
-          const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${key}.mp3`, audio)
+          const ext = audio.type === 'audio/wav' ? 'wav' : 'mp3'
+          const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${key}.${ext}`, audio)
           const code = chain[2]?.meta.code
           const body: LectureBody = {
             script,
@@ -376,7 +377,7 @@ export default function App() {
             style: teacher.style,
             sections,
             length,
-            fileName: `${[code, chapter.title, sections.length ? label : '', length].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.mp3`,
+            fileName: `${[code, chapter.title, sections.length ? label : '', length].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.${ext}`,
           }
           const row = await store.addExtra(chapter.id, 'lecture', key, body, model)
           setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))

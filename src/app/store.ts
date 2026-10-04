@@ -145,7 +145,7 @@ const cloud: Store = {
   uploadAudio: async (path, audio) => {
     const res = await fetch(`${SUPABASE_URL}/storage/v1/object/xe-lectures/${path}`, {
       method: 'POST',
-      headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}`, 'content-type': 'audio/mpeg' },
+      headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}`, 'content-type': audio.type || 'audio/mpeg' },
       body: audio,
     })
     if (!res.ok) throw new Error(`Could not save the audio (${res.status}).`)

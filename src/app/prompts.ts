@@ -352,7 +352,9 @@ export function sseToText(): TransformStream<Uint8Array, string> {
 
 /* ---------------- lectures: text to speech ---------------- */
 
-export const SPEECH_MODEL = 'openai/gpt-4o-mini-tts-2025-12-15'
+/** preferred voice model; if OpenRouter doesn't list it, pickSpeechModel chooses one it does */
+export const SPEECH_MODEL = 'microsoft/mai-voice-2.1-flash'
+export const DEFAULT_VOICE = 'en-US-Harper:MAI-Voice-2.1-Flash'
 export const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']
 export const STYLES: Record<string, { label: string; instructions: string }> = {
   professor: {
@@ -391,7 +393,7 @@ export function isSpeechRequest(x: unknown): x is SpeechRequest {
     r.text.trim().length > 0 &&
     r.text.length <= SPEECH_CHUNK + 500 &&
     typeof r.voice === 'string' &&
-    /^[\w.-]{1,60}$/.test(r.voice) &&
+    /^[\w.:-]{1,100}$/.test(r.voice) &&
     typeof r.style === 'string' &&
     r.style in STYLES &&
     (r.model === undefined || /^[\w.-]+\/[\w.:-]+$/.test(r.model))
@@ -452,13 +454,47 @@ export interface SpeechModel {
   voices: string[]
 }
 
+/**
+ * The model to use: the wanted one if OpenRouter lists it, otherwise the closest it does
+ * (an OpenAI mini TTS, then any OpenAI voice model, then the first listed).
+ */
+export function pickSpeechModel(models: SpeechModel[], wanted: string): string {
+  if (!models.length || models.some((m) => m.id === wanted)) return wanted
+  return (
+    models.find((m) => /mai-voice-2\.1-flash/.test(m.id))?.id ??
+    models.find((m) => /gemini.*tts/.test(m.id))?.id ??
+    models.find((m) => m.voices.length)?.id ??
+    models[0].id
+  )
+}
+
+/** English voices first (most models list voices for many languages). */
+export function sortVoices(voices: string[]): string[] {
+  const en = (v: string) => (/^en[-_]?US/i.test(v) ? 0 : /^(en|gb|af|am|bf|bm)[-_]/i.test(v) || /english/i.test(v) ? 1 : 2)
+  return [...voices].sort((a, b) => en(a) - en(b))
+}
+
+/** "en-US-Harper:MAI-Voice-2.1-Flash" → "Harper (en-US)"; other names tidied. */
+export function voiceLabel(v: string): string {
+  const mai = v.match(/^([a-z]{2}-[A-Z]{2})-([^:]+):/)
+  if (mai) return `${mai[2]} (${mai[1]})`
+  return v.replace(/^aura-2-|^flux-|^English_/, '').replace(/[-_]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
 /** The speech models OpenRouter offers right now, with the voices each supports. */
 export async function listSpeechModels(apiKey?: string): Promise<SpeechModel[]> {
-  const res = await fetch(`${OPENROUTER_BASE_URL}/models?output_modalities=speech`, {
-    headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {},
-  })
-  if (!res.ok) return []
-  const data = ((await res.json().catch(() => null)) as { data?: Record<string, unknown>[] } | null)?.data ?? []
+  const get = async (q: string) => {
+    const res = await fetch(`${OPENROUTER_BASE_URL}/models${q}`, { headers: apiKey ? { authorization: `Bearer ${apiKey}` } : {} })
+    if (!res.ok) return []
+    return ((await res.json().catch(() => null)) as { data?: Record<string, unknown>[] } | null)?.data ?? []
+  }
+  let data = await get('?output_modalities=speech')
+  // if the filter isn't honoured, scan everything for models that output speech/audio
+  if (!data.length || data.length > 100)
+    data = (await get('')).filter((m) => {
+      const out = (m.architecture as { output_modalities?: string[] } | undefined)?.output_modalities ?? []
+      return out.some((o) => /speech|audio/i.test(o)) || /tts/i.test(String(m.id))
+    })
   // voices aren't in a guaranteed place: take the first string array under a key that mentions "voice"
   const findVoices = (o: unknown, depth = 0): string[] => {
     if (!o || typeof o !== 'object' || depth > 3) return []

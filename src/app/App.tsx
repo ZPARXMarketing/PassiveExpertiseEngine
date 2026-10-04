@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { generate, loadSettings, saveSettings, type Settings } from './generate.ts'
+import { generate, loadSettings, record, saveSettings, type Settings } from './generate.ts'
 import type { GenKind, GenRequest } from './prompts.ts'
 import {
   applyFix,
+  parseChart,
   latest,
   lessonText,
   parseBranches,
@@ -22,7 +23,9 @@ import {
   type CheckResult,
   type Extra,
   type Lesson,
+  type LectureBody,
   type Level,
+  type Teacher,
   type SavedItem,
   type Syllabus,
   type TreeNode,
@@ -43,6 +46,9 @@ const EMPTY_TOOLS: ToolCtx = {
   error: () => '',
   pending: () => [],
   run: () => {},
+  lecture: () => {},
+  remove: () => {},
+  teacher: { voice: 'sage', style: 'professor', speed: 1 },
 }
 
 /** At most one UI update per animation frame per stream. */
@@ -100,6 +106,9 @@ export default function App() {
   const [extras, setExtras] = useState<Record<string, Extra[]>>({})
   const [live, setLive] = useState<Record<string, string>>({})
   const [studyTools, setStudyTools] = useState(false)
+  const [teacher, setTeacher] = useState<Teacher>({ voice: 'sage', style: 'professor', speed: 1 })
+  /** every lecture, for the Library (loaded when it opens) */
+  const [lectures, setLectures] = useState<Extra[]>([])
   const inflight = useRef(new Set<string>())
   const columnsRef = useRef<HTMLDivElement>(null)
 
@@ -112,6 +121,8 @@ export default function App() {
         s.saved().catch(() => []),
       ])
       setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
+      const t = await s.pref<Teacher>('teacher').catch(() => null)
+      if (t) setTeacher((cur) => ({ ...cur, ...t }))
       setStore(s)
       setSubjects(subs)
       setDone(comp)
@@ -248,7 +259,7 @@ export default function App() {
 
   /** Study tools: generate once, stream while writing, save under the chapter. */
   const runExtra = useCallback(
-    (chapter: TreeNode, kind: 'deeper' | 'answer' | 'practice' | 'factcheck', key: string, extraReq: Partial<GenRequest>) => {
+    (chapter: TreeNode, kind: 'deeper' | 'answer' | 'practice' | 'factcheck' | 'visual', key: string, extraReq: Partial<GenRequest>) => {
       const id = liveKey(chapter.id, kind, key)
       return run(id, async () => {
         if (!store) return
@@ -263,14 +274,15 @@ export default function App() {
           settings,
           (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
         )
-        const body =
-          kind === 'deeper'
-            ? { sections: parseSections(text) }
-            : kind === 'practice'
-              ? { problems: parsePractice(text) }
-              : kind === 'answer'
-                ? { question: key, text: text.trim() }
-                : parseCheck(text)
+        let body: unknown
+        if (kind === 'visual') {
+          const spec = parseChart(text)
+          if (!spec) throw new Error("Couldn't draw that one. Try again, or describe the chart you want.")
+          body = { ...spec, request: extraReq.question ?? '' }
+        } else if (kind === 'deeper') body = { sections: parseSections(text) }
+        else if (kind === 'practice') body = { problems: parsePractice(text) }
+        else if (kind === 'answer') body = { question: key, text: text.trim() }
+        else body = parseCheck(text)
         const row = await store.addExtra(chapter.id, kind === 'factcheck' ? 'check' : kind, key, body, model)
         setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
         setLive((l) => ({ ...l, [id]: '' }))
@@ -299,6 +311,66 @@ export default function App() {
       }),
     [run, store, settings, known],
   )
+
+  /** Write a spoken script, record it in the teacher's voice, store the MP3. */
+  const runLecture = useCallback(
+    (chapter: TreeNode, lesson: Lesson, section: string) => {
+      const id = liveKey(chapter.id, 'lecture', section)
+      return run(id, async () => {
+        if (!store) return
+        const chain = chainIds(chapter.id, known).map((x) => known[x]).filter(Boolean)
+        const trail = chain.slice(0, 3).map((n) => n.title)
+        const { text, model } = await generate(
+          {
+            kind: 'lecture',
+            trail: trail.length ? trail : [chapter.title],
+            chapter: { title: chapter.title, summary: chapter.summary, index: 0, outline: [] },
+            context: lessonText(lesson),
+            focus: section ? [section] : undefined,
+          },
+          settings,
+          (t) => throttle(id, () => setLive((l) => ({ ...l, [id]: t }))),
+        )
+        const script = text.trim()
+        const prog = liveKey(chapter.id, 'lecture-rec', section)
+        const audio = await record(script, { voice: teacher.voice, style: teacher.style }, settings, (d, n) =>
+          setLive((l) => ({ ...l, [prog]: `${d}/${n}` })),
+        )
+        const slug = (section || 'chapter').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40)
+        const audioUrl = await store.uploadAudio(`${chapter.id}/${slug}-${Date.now()}.mp3`, audio)
+        const code = chain[2]?.meta.code
+        const body: LectureBody = {
+          script,
+          audioUrl,
+          voice: teacher.voice,
+          style: teacher.style,
+          section,
+          fileName: `${[code, chapter.title, section].filter(Boolean).join(' - ').replace(/[\\/:*?"<>|]+/g, '')}.mp3`,
+        }
+        const row = await store.addExtra(chapter.id, 'lecture', section, body, model)
+        setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), row] }))
+        setLectures((ls) => [...ls, row])
+        setLive((l) => ({ ...l, [id]: '', [prog]: '' }))
+      })
+    },
+    [run, store, settings, known, teacher],
+  )
+
+  const removeExtra = async (chapter: TreeNode, x: Extra) => {
+    if (!store) return
+    setExtras((e) => ({ ...e, [chapter.id]: (e[chapter.id] ?? []).filter((y) => y.id !== x.id) }))
+    await store.removeExtra(x.id).catch(() => setExtras((e) => ({ ...e, [chapter.id]: [...(e[chapter.id] ?? []), x] })))
+  }
+
+  const saveTeacher = (t: Teacher) => {
+    setTeacher(t)
+    void store?.setPref('teacher', t).catch(() => {})
+  }
+
+  // The Library lists every lecture; fetch them when it opens.
+  useEffect(() => {
+    if (tab === 'library' && store) void store.extrasOfKind('lecture').then(setLectures).catch(() => {})
+  }, [tab, store])
 
   const toggleStudyTools = () => {
     const next = !studyTools
@@ -486,6 +558,9 @@ export default function App() {
               .map((k) => k.slice(prefix.length))
           },
           run: (kind, key, req) => void runExtra(chapter, kind, key, { ...req, context: lessonText(lesson) }),
+          lecture: (section) => void runLecture(chapter, lesson, section),
+          remove: (x) => void removeExtra(chapter, x),
+          teacher,
         }
       : null
 
@@ -572,6 +647,8 @@ export default function App() {
       {tab === 'library' && (
         <Library
           saved={saved}
+          lectures={lectures}
+          speed={teacher.speed}
           nodes={known}
           docs={docs}
           done={done}
@@ -668,6 +745,8 @@ export default function App() {
         <SettingsSheet
           settings={settings}
           mode={store?.mode}
+          teacher={teacher}
+          onTeacher={saveTeacher}
           onSave={(s) => {
             setSettings(s)
             saveSettings(s)

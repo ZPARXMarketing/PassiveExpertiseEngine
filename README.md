@@ -31,6 +31,15 @@ A **Study tools** switch in the reader (off by default, synced across devices) r
   sections can go deeper again (3 levels).
 - **Ask a question** about the chapter, and **Practice problems** with hidden worked solutions.
 
+- **🎧 Lecture** for a section or the whole chapter: a spoken lecture script, recorded in your
+  teacher's voice (OpenAI voices via OpenRouter `/audio/speech`), saved as an MP3 in the
+  `xe-lectures` storage bucket. Play with speed control, download, or read the transcript; every
+  lecture is also under **Library → Lectures**. Voice, style and speed live in Settings (synced),
+  with a preview button.
+- **📊 Add a chart** for a section: the AI picks a line / bar / scatter / pie chart or a flow
+  diagram (or draws the one you describe). Charts become part of that section for good, so each
+  chapter grows into your own textbook. Invented numbers are labelled "Illustrative".
+
 **Fact-check** (always visible once a chapter is written) checks the chapter against the web with
 Perplexity Sonar and shows ✓ Verified or the flagged claims with corrections and sources.
 **Fix these** (asks first) rewrites only the flagged parts; the corrected copy replaces the
@@ -44,7 +53,8 @@ Text appears while it is written, OpenRouter routes to the fastest provider, and
 is written in the background while you read.
 
 - Writing: DeepSeek (`deepseek/deepseek-chat`). Fact-checks: `perplexity/sonar`.
-- Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL` (optional).
+- Lectures: `netlify/edge-functions/speech.ts` (`POST /api/speech`), model `openai/gpt-4o-mini-tts-2025-12-15`.
+- Site env: `OPENROUTER_API_KEY` (required), `OPENROUTER_MODEL`, `OPENROUTER_FACTCHECK_MODEL`, `OPENROUTER_TTS_MODEL` (optional).
 - Or paste a key in **Settings** (⚙) — then that browser calls OpenRouter directly.
 
 ## Storage

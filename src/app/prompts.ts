@@ -21,8 +21,22 @@ export type GenKind =
   | 'practice'
   | 'factcheck'
   | 'fix'
+  | 'lecture'
+  | 'visual'
 
-const KINDS: GenKind[] = ['branches', 'courses', 'syllabus', 'chapter', 'deeper', 'answer', 'practice', 'factcheck', 'fix']
+const KINDS: GenKind[] = [
+  'branches',
+  'courses',
+  'syllabus',
+  'chapter',
+  'deeper',
+  'answer',
+  'practice',
+  'factcheck',
+  'fix',
+  'lecture',
+  'visual',
+]
 
 export interface GenRequest {
   kind: GenKind
@@ -163,6 +177,47 @@ PROBLEM: <what is wrong>
 CORRECTION: <the accurate version>
 SOURCE: <url>`,
   },
+  lecture: {
+    maxTokens: 2800,
+    temperature: 0.4,
+    system: `${BASE}
+
+Write the script of a spoken university lecture. It will be read aloud by a voice,
+so write for the ear: natural spoken sentences, signposting ("First...", "Here is the
+key idea..."), no headings, lists, symbols or formulas written as symbols (say them in
+words, e.g. "x squared"), spell out abbreviations on first use. Open with a hook, explain
+the ideas, walk through one concrete example with real numbers, and close with a short
+recap of the three things to remember. Teach it; do not just read the chapter back.
+Output only the spoken words, paragraphs separated by blank lines.
+
+Length: about 1100 to 1500 words for a whole chapter, 450 to 700 words for one section.`,
+  },
+  visual: {
+    maxTokens: 1500,
+    temperature: 0.2,
+    system: `You design one chart or diagram that makes a section of a textbook click.
+Pick the form that fits the idea: "line" (change over time or a continuous relationship),
+"bar" (comparing categories), "scatter" (relationship between two measures), "pie"
+(parts of a whole) or "flow" (a process, cause and effect, or a structure). Use real,
+well-known data when the idea is about real data; otherwise use simple illustrative
+numbers and set "illustrative": true. Never present invented numbers as real.
+Respond with one JSON object and nothing else:
+
+{ "type": "line|bar|scatter|pie|flow",
+  "title": "short title",
+  "caption": "1-2 sentences: what to look at and the takeaway",
+  "illustrative": true,
+  "source": "where real data comes from, or empty",
+  "xLabel": "", "yLabel": "",
+  "series": [ { "name": "", "points": [[x, y]] } ],              // line, scatter
+  "categories": ["A", "B"], "bars": [ { "name": "", "values": [1, 2] } ],   // bar
+  "slices": [ { "label": "", "value": 1 } ],                      // pie
+  "nodes": [ { "id": "a", "label": "" } ],
+  "edges": [ { "from": "a", "to": "b", "label": "" } ] }          // flow
+
+Only fill the fields your type uses. At most 4 series or bar groups, 12 categories,
+40 points per series, 8 slices, 10 nodes. Labels under 40 characters.`,
+  },
   fix: {
     maxTokens: 4000,
     temperature: 0.2,
@@ -193,6 +248,12 @@ function userPrompt(req: GenRequest): string {
   }
   if (req.context) lines.push(`\nChapter text:\n${req.context.slice(0, 14000)}`)
   if (req.kind === 'deeper' && req.focus?.length) lines.push(`\nGo deeper on: ${req.focus.join(' > ')}`)
+  if (req.kind === 'visual') {
+    if (req.focus?.length) lines.push(`\nSection: ${req.focus.join(' > ')}`)
+    lines.push(req.question ? `\nThe learner asked for: ${req.question}` : '\nChoose the most useful visual for this section.')
+  }
+  if (req.kind === 'lecture')
+    lines.push(req.focus?.length ? `\nLecture on this section only: ${req.focus.join(' > ')}` : '\nLecture on the whole chapter.')
   if (req.kind === 'answer' && req.question) lines.push(`\nQuestion: ${req.question}`)
   if (req.kind === 'fix' && req.issues) lines.push(`\nIssues found:\n${req.issues}`)
   return lines.join('\n')
@@ -271,4 +332,76 @@ export function sseToText(): TransformStream<Uint8Array, string> {
       if (cites.size) ctl.enqueue(`\n@CITATIONS\n${[...cites].join('\n')}\n`)
     },
   })
+}
+
+/* ---------------- lectures: text to speech ---------------- */
+
+export const SPEECH_MODEL = 'openai/gpt-4o-mini-tts-2025-12-15'
+export const VOICES = ['alloy', 'ash', 'ballad', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer', 'verse']
+export const STYLES: Record<string, { label: string; instructions: string }> = {
+  professor: {
+    label: 'Warm professor',
+    instructions:
+      'Speak like a warm, engaging university professor giving a lecture: clear, measured pace, natural emphasis on key terms, brief pauses between ideas.',
+  },
+  energetic: {
+    label: 'Energetic',
+    instructions: 'Speak like an energetic, enthusiastic lecturer: lively, upbeat, varied intonation, still easy to follow.',
+  },
+  calm: {
+    label: 'Calm and slow',
+    instructions: 'Speak calmly and slowly, like a patient tutor, pausing between ideas so each one lands.',
+  },
+  narrator: {
+    label: 'Documentary narrator',
+    instructions: 'Speak like a documentary narrator: rich, expressive and unhurried.',
+  },
+}
+export const SPEECH_CHUNK = 2000
+
+export interface SpeechRequest {
+  text: string
+  voice: string
+  style: string
+}
+
+export function isSpeechRequest(x: unknown): x is SpeechRequest {
+  const r = x as SpeechRequest
+  return (
+    !!r &&
+    typeof r.text === 'string' &&
+    r.text.trim().length > 0 &&
+    r.text.length <= SPEECH_CHUNK + 500 &&
+    VOICES.includes(r.voice) &&
+    typeof r.style === 'string' &&
+    r.style in STYLES
+  )
+}
+
+export function speechBody(req: SpeechRequest, model = SPEECH_MODEL) {
+  return {
+    model,
+    input: req.text,
+    voice: req.voice,
+    response_format: 'mp3',
+    provider: { options: { openai: { instructions: STYLES[req.style].instructions } } },
+  }
+}
+
+/** Split a script into chunks under the per-request limit, on paragraph/sentence boundaries. */
+export function chunkScript(text: string, max = SPEECH_CHUNK): string[] {
+  const out: string[] = []
+  let cur = ''
+  const push = (piece: string) => {
+    if ((cur + '\n\n' + piece).length > max && cur) {
+      out.push(cur)
+      cur = piece
+    } else cur = cur ? `${cur}\n\n${piece}` : piece
+  }
+  for (const para of text.split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean)) {
+    if (para.length <= max) push(para)
+    else for (const sentence of para.match(/[^.!?]+[.!?]+["')\]]*\s*|[^.!?]+$/g) ?? [para]) push(sentence.trim())
+  }
+  if (cur) out.push(cur)
+  return out
 }

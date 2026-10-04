@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { chainIds, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import { Player } from './Study.tsx'
+import { chainIds, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 
-type Filter = 'all' | 'course' | 'chapter' | 'snippet'
+type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 
 interface Props {
   saved: SavedItem[]
+  lectures: Extra[]
+  speed: number
   nodes: Record<string, TreeNode>
   docs: Record<string, unknown>
   done: Set<string>
@@ -17,6 +20,7 @@ interface ChapterGroup {
   node: TreeNode
   saved?: SavedItem
   snippets: SavedItem[]
+  lectures: Extra[]
 }
 interface CourseGroup {
   node: TreeNode
@@ -39,12 +43,12 @@ const byPos = (a: { node: TreeNode }, b: { node: TreeNode }) => a.node.position 
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, nodes, docs, done, loadAncestors, onOpen, onRemove }: Props) {
+export function Library({ saved, lectures, speed, nodes, docs, done, loadAncestors, onOpen, onRemove }: Props) {
   const [filter, setFilter] = useState<Filter>('all')
   const [query, setQuery] = useState('')
 
   // Make sure every saved item's ancestors are loaded so it can be filed.
-  const missing = saved.filter((x) => chainIds(x.node_id, nodes).some((id) => !nodes[id]) || !nodes[x.node_id])
+  const missing = [...saved, ...lectures].filter((x) => chainIds(x.node_id, nodes).some((id) => !nodes[id]) || !nodes[x.node_id])
   const missingKey = missing.map((x) => x.node_id).join(',')
   const load = useRef(loadAncestors)
   load.current = loadAncestors
@@ -53,28 +57,31 @@ export function Library({ saved, nodes, docs, done, loadAncestors, onOpen, onRem
   }, [missingKey])
 
   const counts = useMemo(() => {
-    const c = { all: saved.length, course: 0, chapter: 0, snippet: 0 }
+    const c = { all: saved.length + lectures.length, course: 0, chapter: 0, snippet: 0, lecture: lectures.length }
     for (const x of saved) {
       if (x.kind === 'snippet') c.snippet++
       else if (nodes[x.node_id]?.level === 'course') c.course++
       else c.chapter++
     }
     return c
-  }, [saved, nodes])
+  }, [saved, lectures, nodes])
 
   const tree = useMemo(() => {
     const q = query.trim().toLowerCase()
     const subjects = new Map<string, SubjectGroup>()
-    for (const item of saved) {
+    const entries: (SavedItem | Extra)[] = [...saved, ...lectures]
+    for (const item of entries) {
       const node = nodes[item.node_id]
       if (!node) continue
-      const type: Filter = item.kind === 'snippet' ? 'snippet' : node.level === 'course' ? 'course' : 'chapter'
+      const type: Filter =
+        item.kind === 'lecture' ? 'lecture' : item.kind === 'snippet' ? 'snippet' : node.level === 'course' ? 'course' : 'chapter'
       if (filter !== 'all' && filter !== type) continue
       const chain = chainIds(item.node_id, nodes).map((id) => nodes[id])
       const [subject, branch, course, chapter] = chain
       if (!subject || !branch || !course) continue
       if (q) {
-        const hay = [...chain.map((n) => n?.title ?? ''), course.meta.code ?? '', item.text].join(' ').toLowerCase()
+        const extraText = 'text' in item ? item.text : (item.body as LectureBody).section
+        const hay = [...chain.map((n) => n?.title ?? ''), course.meta.code ?? '', extraText].join(' ').toLowerCase()
         if (!hay.includes(q)) continue
       }
 
@@ -86,22 +93,24 @@ export function Library({ saved, nodes, docs, done, loadAncestors, onOpen, onRem
       let c = b.courses.get(course.id)
       if (!c) b.courses.set(course.id, (c = { node: course, chapters: new Map() }))
       if (!chapter) {
-        c.saved = item
+        if ('text' in item) c.saved = item
         continue
       }
       let ch = c.chapters.get(chapter.id)
-      if (!ch) c.chapters.set(chapter.id, (ch = { node: chapter, snippets: [] }))
-      if (item.kind === 'snippet') ch.snippets.push(item)
-      else ch.saved = item
+      if (!ch) c.chapters.set(chapter.id, (ch = { node: chapter, snippets: [], lectures: [] }))
+      if (item.kind === 'lecture') ch.lectures.push(item as Extra)
+      else if (item.kind === 'snippet') ch.snippets.push(item as SavedItem)
+      else ch.saved = item as SavedItem
     }
     return [...subjects.values()].sort((a, b) => a.node.title.localeCompare(b.node.title))
-  }, [saved, nodes, filter, query])
+  }, [saved, lectures, nodes, filter, query])
 
   const FILTERS: [Filter, string][] = [
     ['all', 'All'],
     ['course', 'Courses'],
     ['chapter', 'Chapters'],
     ['snippet', 'Highlights'],
+    ['lecture', 'Lectures'],
   ]
 
   return (
@@ -129,7 +138,7 @@ export function Library({ saved, nodes, docs, done, loadAncestors, onOpen, onRem
         </div>
       </div>
 
-      {saved.length === 0 ? (
+      {saved.length + lectures.length === 0 ? (
         <div className="lib-empty">
           <h2>Nothing saved yet</h2>
           <p>
@@ -181,6 +190,15 @@ export function Library({ saved, nodes, docs, done, loadAncestors, onOpen, onRem
                               </button>
                             )}
                           </div>
+                          {ch.lectures.map((l) => {
+                            const b = l.body as LectureBody
+                            return (
+                              <div key={l.id} className="lib-lecture">
+                                <div className="lib-lecture-title">🎧 {b.section || 'Whole chapter'}</div>
+                                <Player url={b.audioUrl} fileName={b.fileName} speed={speed} />
+                              </div>
+                            )
+                          })}
                           {ch.snippets
                             .sort((a, b) => a.created_at.localeCompare(b.created_at))
                             .map((sn) => (

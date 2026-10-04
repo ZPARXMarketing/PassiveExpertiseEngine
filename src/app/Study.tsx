@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { latest, paras, parseCheck, parsePractice, parseSections } from './parse.ts'
-import type { CheckResult, Extra, LessonSection, PracticeProblem } from './types.ts'
+import { Chart } from './Chart.tsx'
+import { STYLES } from './prompts.ts'
+import type { ChartSpec, CheckResult, Extra, LectureBody, LessonSection, PracticeProblem, Teacher } from './types.ts'
 
 /** What one study tool needs from the chapter it lives in. */
 export interface ToolCtx {
@@ -11,7 +13,12 @@ export interface ToolCtx {
   error: (kind: string, key: string) => string
   /** keys of one tool currently being generated */
   pending: (kind: string) => string[]
-  run: (kind: 'deeper' | 'answer' | 'practice' | 'factcheck', key: string, req: { focus?: string[]; question?: string }) => void
+  run: (kind: 'deeper' | 'answer' | 'practice' | 'factcheck' | 'visual', key: string, req: { focus?: string[]; question?: string }) => void
+  /** delete one saved extra (a chart) */
+  remove: (x: Extra) => void
+  /** record a lecture for a section ('' = whole chapter) */
+  lecture: (section: string) => void
+  teacher: Teacher
 }
 
 const MAX_DEPTH = 3
@@ -296,6 +303,146 @@ function Retry({ msg, onRetry }: { msg: string; onRetry: () => void }) {
       <button className="btn-ghost" onClick={onRetry}>
         Try again
       </button>
+    </div>
+  )
+}
+
+export function LectureChip({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button className={`lecture-chip ${open ? 'open' : ''}`} onClick={onClick} aria-expanded={open} aria-label="Lecture">
+      🎧{open ? ' ▾' : ''}
+    </button>
+  )
+}
+
+const SPEEDS = [0.75, 1, 1.25, 1.5, 2]
+
+/**
+ * A lecture for one section (or the whole chapter): record it once, then play,
+ * change speed, download or read the transcript. Recording is an explicit second tap.
+ */
+export function LecturePanel({ ctx, section }: { ctx: ToolCtx; section: string }) {
+  const lecture = latest(ctx.extras, 'lecture', section)?.body as LectureBody | undefined
+  const busy = ctx.busy('lecture', section)
+  const script = ctx.live('lecture', section)
+  const progress = ctx.live('lecture-rec', section)
+  const err = ctx.error('lecture', section)
+  const [showScript, setShowScript] = useState(false)
+  const voice = `${cap(ctx.teacher.voice)} · ${STYLES[ctx.teacher.style]?.label ?? ''}`
+
+  return (
+    <div className="lecture">
+      <div className="lecture-kicker">🎧 Lecture · {section || 'Whole chapter'}</div>
+      {lecture && !busy && (
+        <>
+          <Player url={lecture.audioUrl} fileName={lecture.fileName} speed={ctx.teacher.speed} />
+          <div className="lecture-row">
+            <button className="reveal" onClick={() => setShowScript((v) => !v)} aria-expanded={showScript}>
+              {showScript ? 'Hide transcript' : 'Transcript'}
+            </button>
+            <button
+              className="reveal muted-btn"
+              onClick={() => confirm(`Record a new version in ${voice}?`) && ctx.lecture(section)}
+            >
+              Re-record
+            </button>
+          </div>
+          {showScript && <div className="transcript">{paras(lecture.script).map((t) => <p key={t}>{t}</p>)}</div>}
+        </>
+      )}
+      {busy && (
+        <>
+          <Writing label={progress ? `Recording ${progress}…` : 'Writing the lecture…'} />
+          {script && !progress && <div className="transcript live">{paras(script).slice(-2).map((t) => <p key={t}>{t}</p>)}</div>}
+        </>
+      )}
+      {!lecture && !busy && (
+        <button className="btn-neon" onClick={() => ctx.lecture(section)}>
+          Record lecture <span className="voice-tag">{voice}</span>
+        </button>
+      )}
+      {err && !busy && <div className="error">{err}</div>}
+    </div>
+  )
+}
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+
+export function Player({ url, fileName, speed }: { url: string; fileName: string; speed: number }) {
+  const ref = useRef<HTMLAudioElement>(null)
+  const [rate, setRate] = useState(speed)
+  useEffect(() => {
+    if (ref.current) ref.current.playbackRate = rate
+  }, [rate])
+  const download = url.startsWith('blob:') ? url : `${url}?download=${encodeURIComponent(fileName)}`
+  return (
+    <div className="player">
+      <audio ref={ref} src={url} controls preload="metadata" onLoadedMetadata={(e) => (e.currentTarget.playbackRate = rate)} />
+      <div className="player-row">
+        <div className="speeds" role="group" aria-label="Speed">
+          {SPEEDS.map((s) => (
+            <button key={s} className={s === rate ? 'on' : ''} onClick={() => setRate(s)}>
+              {s}×
+            </button>
+          ))}
+        </div>
+        <a className="download" href={download} download={fileName}>
+          ⬇ Download
+        </a>
+      </div>
+    </div>
+  )
+}
+
+export function VisualChip({ open, onClick }: { open: boolean; onClick: () => void }) {
+  return (
+    <button className={`lecture-chip ${open ? 'open' : ''}`} onClick={onClick} aria-expanded={open} aria-label="Add a chart">
+      📊{open ? ' ▾' : ''}
+    </button>
+  )
+}
+
+/** Charts saved in a section: part of the chapter from now on, shown whether tools are on or not. */
+export function SectionVisuals({ ctx, section, editable }: { ctx: ToolCtx; section: string; editable: boolean }) {
+  const list = ctx.extras.filter((x) => x.kind === 'visual' && x.key === section)
+  return (
+    <>
+      {list.map((x) => (
+        <div key={x.id} className="visual">
+          <Chart spec={x.body as ChartSpec} />
+          {editable && (
+            <button className="visual-x" onClick={() => confirm('Remove this chart from the chapter?') && ctx.remove(x)} aria-label="Remove chart">
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** Ask for a chart: let the AI pick, or describe one. Explicit "Draw" tap. */
+export function VisualPanel({ ctx, section }: { ctx: ToolCtx; section: string }) {
+  const [ask, setAsk] = useState('')
+  const busy = ctx.busy('visual', section)
+  const err = ctx.error('visual', section)
+  const draw = () => ctx.run('visual', section, { focus: [section], question: ask.trim().slice(0, 300) || undefined })
+  return (
+    <div className="lecture visual-panel">
+      <div className="lecture-kicker">📊 Add a chart · {section}</div>
+      <form
+        className="ask"
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (!busy) draw()
+        }}
+      >
+        <input value={ask} onChange={(e) => setAsk(e.target.value)} placeholder="Optional: describe it (e.g. demand curve with a price ceiling)" />
+        <button className="btn-neon" disabled={busy}>
+          {busy ? 'Drawing…' : ask.trim() ? 'Draw it' : 'Suggest one'}
+        </button>
+      </form>
+      {err && !busy && <div className="error">{err}</div>}
     </div>
   )
 }

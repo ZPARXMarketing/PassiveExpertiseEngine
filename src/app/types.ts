@@ -85,7 +85,7 @@ export interface CheckResult {
   checkedAt: string
 }
 
-export type ExtraKind = 'deeper' | 'answer' | 'practice' | 'check' | 'fixed'
+export type ExtraKind = 'deeper' | 'answer' | 'practice' | 'check' | 'fixed' | 'lecture' | 'visual'
 
 /** Study-tool output hung off a chapter. Newest row per (kind, key) wins. */
 export interface Extra {
@@ -99,3 +99,38 @@ export interface Extra {
 
 /** busy / streaming key for one study tool on one chapter */
 export const liveKey = (chapterId: string, kind: string, key: string) => `${chapterId}:${kind}:${key}`
+
+export interface Teacher {
+  voice: string
+  style: string
+  /** playback speed */
+  speed: number
+}
+
+export interface LectureBody {
+  script: string
+  audioUrl: string
+  voice: string
+  style: string
+  /** section heading, or '' for the whole chapter */
+  section: string
+  fileName: string
+}
+
+export interface ChartSpec {
+  type: 'line' | 'bar' | 'scatter' | 'pie' | 'flow'
+  title: string
+  caption: string
+  illustrative: boolean
+  source: string
+  xLabel: string
+  yLabel: string
+  series: { name: string; points: [number, number][] }[]
+  categories: string[]
+  bars: { name: string; values: number[] }[]
+  slices: { label: string; value: number }[]
+  nodes: { id: string; label: string }[]
+  edges: { from: string; to: string; label: string }[]
+  /** what the learner asked for, if anything */
+  request?: string
+}

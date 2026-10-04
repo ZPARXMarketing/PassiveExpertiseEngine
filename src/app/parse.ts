@@ -3,7 +3,7 @@
  * partial text, so the UI can render while the model is still writing.
  */
 
-import type { CheckResult, Extra, Lesson, LessonSection, PracticeProblem, Syllabus } from './types.ts'
+import type { ChartSpec, CheckResult, Extra, Lesson, LessonSection, PracticeProblem, Syllabus } from './types.ts'
 
 const clean = (s: string) => s.replace(/\*\*|__|`/g, '').replace(/^#+\s*/gm, '').trim()
 
@@ -178,3 +178,60 @@ export function latest(extras: Extra[], kind: Extra['kind'], key = ''): Extra | 
   return undefined
 }
 
+
+/** Model JSON → a chart spec the renderer can trust (bad fields dropped, sizes capped). */
+export function parseChart(text: string): ChartSpec | null {
+  const m = text.match(/\{[\s\S]*\}/)
+  if (!m) return null
+  let raw: Record<string, unknown>
+  try {
+    raw = JSON.parse(m[0].replace(/\/\/[^\n"]*$/gm, '')) as Record<string, unknown>
+  } catch {
+    return null
+  }
+  const str = (v: unknown, max = 80) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+  const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v))
+  const arr = (v: unknown) => (Array.isArray(v) ? (v as Record<string, unknown>[]) : [])
+  const type = (['line', 'bar', 'scatter', 'pie', 'flow'] as const).find((t) => t === raw.type)
+  if (!type) return null
+  const spec: ChartSpec = {
+    type,
+    title: str(raw.title, 120),
+    caption: str(raw.caption, 400),
+    illustrative: raw.illustrative !== false,
+    source: str(raw.source, 200),
+    xLabel: str(raw.xLabel),
+    yLabel: str(raw.yLabel),
+    series: arr(raw.series)
+      .slice(0, 4)
+      .map((s) => ({
+        name: str(s.name),
+        points: (Array.isArray(s.points) ? (s.points as unknown[][]) : [])
+          .slice(0, 60)
+          .map((p) => [num(p?.[0]), num(p?.[1])] as [number, number])
+          .filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y)),
+      }))
+      .filter((s) => s.points.length),
+    categories: (Array.isArray(raw.categories) ? raw.categories : []).slice(0, 12).map((c) => str(c, 40)),
+    bars: arr(raw.bars)
+      .slice(0, 4)
+      .map((b) => ({ name: str(b.name), values: (Array.isArray(b.values) ? b.values : []).slice(0, 12).map(num) })),
+    slices: arr(raw.slices)
+      .slice(0, 8)
+      .map((s) => ({ label: str(s.label, 40), value: num(s.value) }))
+      .filter((s) => s.value > 0),
+    nodes: arr(raw.nodes)
+      .slice(0, 12)
+      .map((n) => ({ id: str(n.id, 40), label: str(n.label, 60) }))
+      .filter((n) => n.id),
+    edges: arr(raw.edges)
+      .slice(0, 20)
+      .map((e) => ({ from: str(e.from, 40), to: str(e.to, 40), label: str(e.label, 40) })),
+  }
+  const ok =
+    type === 'pie' ? spec.slices.length > 1
+    : type === 'flow' ? spec.nodes.length > 1
+    : type === 'bar' ? spec.categories.length > 0 && spec.bars.some((b) => b.values.some(Number.isFinite))
+    : spec.series.length > 0
+  return ok ? spec : null
+}

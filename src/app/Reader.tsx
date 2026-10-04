@@ -1,7 +1,20 @@
 import { useEffect, useRef, useState } from 'react'
 import { Star } from './Column.tsx'
 import { paras } from './parse.ts'
-import { AskBox, DeeperChip, FactCheck, Opener, Practice, Writing, type ToolCtx } from './Study.tsx'
+import {
+  AskBox,
+  DeeperChip,
+  FactCheck,
+  LectureChip,
+  LecturePanel,
+  Opener,
+  Practice,
+  SectionVisuals,
+  VisualChip,
+  VisualPanel,
+  Writing,
+  type ToolCtx,
+} from './Study.tsx'
 import type { CheckResult, Lesson, TreeNode } from './types.ts'
 
 interface Props {
@@ -36,6 +49,22 @@ export function Reader(p: Props) {
   const [selection, setSelection] = useState('')
   const [flash, setFlash] = useState(false)
   const [deeper, setDeeper] = useState<Set<string>>(new Set())
+  const [lectures, setLectures] = useState<Set<string>>(new Set())
+  const [visuals, setVisuals] = useState<Set<string>>(new Set())
+  const toggleVisual = (k: string) =>
+    setVisuals((o) => {
+      const n = new Set(o)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
+  const toggleLecture = (k: string) =>
+    setLectures((o) => {
+      const n = new Set(o)
+      if (n.has(k)) n.delete(k)
+      else n.add(k)
+      return n
+    })
   const writing = p.loading && !!lesson
 
   // Highlight any text in the chapter → "Save highlight" puts it in the Library.
@@ -91,9 +120,15 @@ export function Reader(p: Props) {
               </span>
               Study tools
             </label>
+            {studyTools && (
+              <button className={`check-btn ${lectures.has('') ? 'on' : ''}`} onClick={() => toggleLecture('')} aria-expanded={lectures.has('')}>
+                🎧 Lecture
+              </button>
+            )}
             <FactCheck ctx={tools} fixing={p.fixing} fixError={p.fixError} onFix={p.onFix} />
           </div>
         )}
+        {studyTools && lectures.has('') && lesson && !p.loading && <LecturePanel ctx={tools} section="" />}
       </header>
 
       {p.loading && !lesson && <Writing label="Writing this chapter…" />}
@@ -118,11 +153,20 @@ export function Reader(p: Props) {
             <section key={s.heading}>
               <h3>
                 {s.heading}
-                {studyTools && !writing && <DeeperChip open={deeper.has(s.heading)} onClick={() => toggleDeeper(s.heading)} />}
+                {studyTools && !writing && (
+                  <span className="chips-inline">
+                    <DeeperChip open={deeper.has(s.heading)} onClick={() => toggleDeeper(s.heading)} />
+                    <LectureChip open={lectures.has(s.heading)} onClick={() => toggleLecture(s.heading)} />
+                    <VisualChip open={visuals.has(s.heading)} onClick={() => toggleVisual(s.heading)} />
+                  </span>
+                )}
               </h3>
+              {lectures.has(s.heading) && <LecturePanel ctx={tools} section={s.heading} />}
+              {studyTools && visuals.has(s.heading) && <VisualPanel ctx={tools} section={s.heading} />}
               {paras(s.body).map((t) => (
                 <p key={t}>{t}</p>
               ))}
+              <SectionVisuals ctx={tools} section={s.heading} editable={studyTools} />
               {deeper.has(s.heading) && <Opener ctx={tools} focus={[s.heading]} studyTools={studyTools} />}
             </section>
           ))}

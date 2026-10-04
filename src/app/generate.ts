@@ -4,7 +4,17 @@
  * the edge function and its server-side key.
  */
 
-import { DEFAULT_MODEL, OPENROUTER_BASE_URL, completionBody, modelFor, sseToText, type GenRequest } from './prompts.ts'
+import {
+  DEFAULT_MODEL,
+  OPENROUTER_BASE_URL,
+  chunkScript,
+  completionBody,
+  modelFor,
+  speechBody,
+  sseToText,
+  type GenRequest,
+  type SpeechRequest,
+} from './prompts.ts'
 
 export interface Settings {
   openRouterKey: string
@@ -77,4 +87,44 @@ export async function generate(req: GenRequest, settings: Settings, onText?: (so
 
   if (!text.trim()) throw new Error('The model returned nothing. Try again.')
   return { text, model }
+}
+
+/** One chunk of lecture script → MP3 bytes. */
+export async function speak(req: SpeechRequest, settings: Settings): Promise<Blob> {
+  const key = settings.openRouterKey.trim()
+  const res = key
+    ? await fetch(`${OPENROUTER_BASE_URL}/audio/speech`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, 'X-Title': 'Expertise Engine' },
+        body: JSON.stringify(speechBody(req)),
+      })
+    : await fetch('/api/speech', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(req),
+      })
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { error?: string } | null
+    throw new Error(data?.error ?? `Voice service returned ${res.status}.`)
+  }
+  return res.blob()
+}
+
+/** A whole script → one MP3 (chunks recorded 3 at a time, joined in order). */
+export async function record(script: string, req: Omit<SpeechRequest, 'text'>, settings: Settings, onProgress: (done: number, total: number) => void): Promise<Blob> {
+  const chunks = chunkScript(script)
+  const parts: Blob[] = new Array(chunks.length)
+  let done = 0
+  onProgress(0, chunks.length)
+  let next = 0
+  const worker = async () => {
+    while (next < chunks.length) {
+      const i = next++
+      parts[i] = await speak({ ...req, text: chunks[i] }, settings)
+      onProgress(++done, chunks.length)
+    }
+  }
+  await Promise.all([worker(), worker(), worker()])
+  // MP3 frames are self-contained, so concatenated chunks play as one file
+  return new Blob(parts, { type: 'audio/mpeg' })
 }

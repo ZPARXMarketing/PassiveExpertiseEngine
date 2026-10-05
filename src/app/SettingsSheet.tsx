@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { looksLikeKey, speak, speechModels, type Settings } from './generate.ts'
 import { DEFAULT_MODEL, DEFAULT_VOICE, SPEECH_MODEL, STYLES, sortVoices, voiceLabel, type SpeechModel } from './prompts.ts'
-import type { Teacher } from './types.ts'
+import type { Bucket, Teacher } from './types.ts'
 
 interface Props {
   settings: Settings
@@ -10,11 +10,28 @@ interface Props {
   onTeacher: (t: Teacher) => void
   onSave: (s: Settings) => void
   onClose: () => void
+  buckets: Bucket[]
+  onSaveBucket: (b: Bucket) => void
+  showUsage: boolean
+  onShowUsage: (on: boolean) => void
 }
+
+const PALETTE = ['#ff9f43', '#c9a7ff', '#7ee081', '#ff5c7a', '#f7f06d', '#5ad1c4', '#ffffff']
 
 const SAMPLE = "Hi, I'm your teacher for this course. Let's start with the one idea that makes everything else in this chapter click."
 
-export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onClose }: Props) {
+export function SettingsSheet({
+  settings,
+  mode,
+  teacher,
+  onTeacher,
+  onSave,
+  onClose,
+  buckets,
+  onSaveBucket,
+  showUsage,
+  onShowUsage,
+}: Props) {
   const [draft, setDraft] = useState(settings)
   const [t, setT] = useState(teacher)
   const [previewing, setPreviewing] = useState(false)
@@ -80,6 +97,96 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
         }}
       >
         <h2>Settings</h2>
+
+        <h3 className="sheet-sub">Highlighter buckets</h3>
+        <p className="sheet-note">
+          Select text in a chapter to save it into one of these. Each has its own name and colour; the Library can
+          filter and group by them. Synced to all your devices.
+        </p>
+        <div className="bucket-list">
+          {buckets
+            .filter((b) => !b.archived)
+            .map((b) => (
+              <div key={b.key} className="bucket-row" style={{ '--hl': b.color } as React.CSSProperties}>
+                <input
+                  type="color"
+                  defaultValue={b.color}
+                  key={b.color}
+                  onBlur={(e) => e.target.value !== b.color && onSaveBucket({ ...b, color: e.target.value })}
+                  onChange={(e) => {
+                    // the native picker fires "change" when it closes; save then
+                    if ((e.nativeEvent as InputEvent).type === 'change') onSaveBucket({ ...b, color: e.target.value })
+                  }}
+                  aria-label={`${b.name} colour`}
+                />
+                <input
+                  className="bucket-name"
+                  defaultValue={b.name}
+                  key={b.name}
+                  maxLength={60}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      ;(e.target as HTMLInputElement).blur()
+                    }
+                  }}
+                  onBlur={(e) => {
+                    const name = e.target.value.trim()
+                    if (name && name !== b.name) onSaveBucket({ ...b, name })
+                  }}
+                  aria-label="Bucket name"
+                />
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  onClick={() => {
+                    if (confirm(`Hide "${b.name}" from the highlighter? Its saved highlights stay in the Library.`))
+                      onSaveBucket({ ...b, archived: true })
+                  }}
+                >
+                  Hide
+                </button>
+              </div>
+            ))}
+        </div>
+        <div className="bucket-actions">
+          <button
+            type="button"
+            className="btn-ghost"
+            onClick={() => {
+              const used = new Set(buckets.map((b) => b.color.toLowerCase()))
+              onSaveBucket({
+                key: `b${Date.now().toString(36)}`,
+                name: 'New bucket',
+                color: PALETTE.find((c) => !used.has(c)) ?? '#ffffff',
+                position: Math.max(0, ...buckets.map((b) => b.position)) + 1,
+                archived: false,
+              })
+            }}
+          >
+            + Add bucket
+          </button>
+          {buckets.some((b) => b.archived) && (
+            <select
+              className="bucket-restore"
+              value=""
+              onChange={(e) => {
+                const b = buckets.find((x) => x.key === e.target.value)
+                if (b) onSaveBucket({ ...b, archived: false })
+              }}
+              aria-label="Show a hidden bucket again"
+            >
+              <option value="">Show a hidden bucket…</option>
+              {buckets
+                .filter((b) => b.archived)
+                .map((b) => (
+                  <option key={b.key} value={b.key}>
+                    {b.name}
+                  </option>
+                ))}
+            </select>
+          )}
+        </div>
 
         <h3 className="sheet-sub">Teacher voice</h3>
         {models.length > 1 && (
@@ -169,6 +276,10 @@ export function SettingsSheet({ settings, mode, teacher, onTeacher, onSave, onCl
         <p className="sheet-note">
           Storage: {mode === 'cloud' ? 'synced to Supabase.' : 'this device only (Supabase tables not set up yet).'}
         </p>
+        <label className="check-row">
+          <input type="checkbox" checked={showUsage} onChange={(e) => onShowUsage(e.target.checked)} />
+          Show API spend (all time · week · day) in the top right
+        </label>
         <p className="sheet-note">
           <a className="lock-link" href="/__logout">
             Lock this device

@@ -4,7 +4,8 @@
  * migration in supabase/migrations is applied.
  */
 
-import type { Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
+import type { Bucket, Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
+import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
 // Publishable key: designed to ship in the browser; RLS on the xe_ tables does the gating.
@@ -46,6 +47,10 @@ export interface Store {
   /** store an MP3, return a URL any device can play */
   uploadAudio(path: string, audio: Blob): Promise<string>
   deleteAudio(url: string): Promise<void>
+  /** highlighter buckets, in order */
+  buckets(): Promise<Bucket[]>
+  /** create or update one bucket */
+  saveBucket(b: Bucket): Promise<void>
   pref<T>(key: string): Promise<T | null>
   setPref(key: string, value: unknown): Promise<void>
 }
@@ -161,6 +166,17 @@ const cloud: Store = {
     await fetch(`${SUPABASE_URL}/storage/v1/object/xe-lectures/${path}`, {
       method: 'DELETE',
       headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}` },
+    })
+  },
+  buckets: async () => {
+    const rows = await rest<Bucket[]>('xe_buckets?order=position.asc&select=key,name,color,position,archived').catch(() => null)
+    return rows?.length ? rows : DEFAULT_BUCKETS
+  },
+  saveBucket: async (b) => {
+    await rest('xe_buckets', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(b),
     })
   },
   pref: async <T,>(key: string) => {
@@ -288,6 +304,12 @@ function makeDevice(): Store {
     // this-device mode can't keep audio files; the lecture plays for this visit only
     uploadAudio: async (_path, audio) => URL.createObjectURL(audio),
     deleteAudio: async (url) => URL.revokeObjectURL(url),
+    buckets: async () => ((d.prefs ?? {}).buckets as Bucket[] | undefined) ?? DEFAULT_BUCKETS,
+    saveBucket: async (b) => {
+      const list = (((d.prefs ??= {}).buckets as Bucket[] | undefined) ?? DEFAULT_BUCKETS).filter((x) => x.key !== b.key)
+      d.prefs.buckets = [...list, b].sort((x, y) => x.position - y.position)
+      save(d)
+    },
     pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
     setPref: async (key, value) => {
       ;(d.prefs ??= {})[key] = value

@@ -407,7 +407,7 @@ button:disabled {
 .column-desc {
   margin: 8px 0 0;
   color: var(--text-dim);
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--fs, 1));
 }
 
 .objectives {
@@ -555,7 +555,7 @@ button:disabled {
 }
 
 .tile-sum {
-  font-size: 13px;
+  font-size: calc(13px * var(--fs, 1));
   color: var(--text-dim);
   line-height: 1.4;
 }
@@ -626,20 +626,20 @@ button:disabled {
 }
 
 .lesson {
-  font-size: 16px;
+  font-size: calc(16px * var(--fs, 1));
   line-height: 1.7;
   padding: 0 4px;
 }
 
 .lesson .lead {
-  font-size: 17px;
+  font-size: calc(17px * var(--fs, 1));
   color: var(--text);
 }
 
 .lesson h3 {
   margin: 28px 0 8px;
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: calc(18px * var(--fs, 1));
   color: var(--neon);
 }
 
@@ -1324,7 +1324,7 @@ button:disabled {
 
 .lib-desc {
   margin: 2px 0 6px;
-  font-size: 13.5px;
+  font-size: calc(13.5px * var(--fs, 1));
   color: var(--text-dim);
 }
 
@@ -1364,7 +1364,7 @@ button:disabled {
 .lib-snip p {
   flex: 1;
   margin: 0;
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--fs, 1));
   color: var(--text);
 }
 
@@ -1625,7 +1625,7 @@ button:disabled {
 .issue {
   padding: 10px 0;
   border-top: 1px solid var(--border);
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--fs, 1));
 }
 
 .issue-claim {
@@ -1706,12 +1706,12 @@ button:disabled {
 .deeper h4 {
   margin: 14px 0 6px;
   font-family: var(--font-display);
-  font-size: 16px;
+  font-size: calc(16px * var(--fs, 1));
   color: var(--text);
 }
 
 .deeper p {
-  font-size: 15px;
+  font-size: calc(15px * var(--fs, 1));
 }
 
 /* ---------- ask + practice ---------- */
@@ -1900,7 +1900,7 @@ button:disabled {
   margin-top: 8px;
   max-height: 320px;
   overflow-y: auto;
-  font-size: 14.5px;
+  font-size: calc(14.5px * var(--fs, 1));
   color: var(--text-dim);
 }
 
@@ -2807,3 +2807,20 @@ mark.hl-active {
 .install-steps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.5; opacity: 0.85; }
 .install-steps li + li { margin-top: 4px; }
 .install-done { margin: 0; font-size: 14px; opacity: 0.7; }
+
+/* Text size (A / A+ / A++ in the top bar): --fs is set on <html>, per device */
+.column,
+.reader,
+.library {
+  font-size: calc(15px * var(--fs, 1));
+}
+.text-size {
+  width: auto;
+  min-width: 44px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}

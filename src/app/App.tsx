@@ -39,6 +39,7 @@ import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 import { Usage } from './Usage.tsx'
+import { TextSizeButton } from './TextSize.tsx'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
@@ -772,6 +773,7 @@ export default function App() {
               Library{saved.length > 0 && <span className="count">{saved.length}</span>}
             </button>
           </nav>
+          <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>

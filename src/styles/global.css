@@ -1304,13 +1304,15 @@ button:disabled {
 }
 
 .lib-snip {
+  --hl: #ffd60a;
   display: flex;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   align-items: flex-start;
   margin: 2px 0 10px 4px;
   padding: 8px 4px 8px 12px;
-  border-left: 3px solid var(--amber);
-  background: var(--amber-soft);
+  border-left: 3px solid var(--hl);
+  background: color-mix(in srgb, var(--hl) 18%, transparent);
   border-radius: 0 10px 10px 0;
 }
 
@@ -2544,15 +2546,11 @@ button:disabled {
 
 /* ---------- highlighter ---------- */
 
-:root {
-  --hl-yellow: rgba(255, 214, 10, 0.32);
-  --hl-green: rgba(42, 255, 163, 0.26);
-  --hl-blue: rgba(76, 201, 255, 0.3);
-  --hl-pink: rgba(255, 92, 170, 0.3);
-}
-
+/* every mark, snippet and button takes its bucket colour from --hl */
 mark.hl {
+  --hl: #ffd60a;
   color: inherit;
+  background: color-mix(in srgb, var(--hl) 30%, transparent);
   border-radius: 3px;
   padding: 1px 0;
   cursor: pointer;
@@ -2560,28 +2558,12 @@ mark.hl {
   -webkit-box-decoration-break: clone;
 }
 
-.hl-yellow {
-  background: var(--hl-yellow);
-}
-
-.hl-green {
-  background: var(--hl-green);
-}
-
-.hl-blue {
-  background: var(--hl-blue);
-}
-
-.hl-pink {
-  background: var(--hl-pink);
-}
-
 mark.hl-active {
   outline: 2px solid var(--text-dim);
   outline-offset: 1px;
 }
 
-/* floating colour bar: under the sticky toolbar, at the right */
+/* floating bucket bar: under the sticky toolbar, at the right */
 .hl-bar {
   position: sticky;
   top: 44px;
@@ -2590,9 +2572,12 @@ mark.hl-active {
   margin-bottom: -48px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   height: 48px;
-  padding: 0 10px 0 14px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 8px 0 14px;
   border-radius: 999px;
   border: 1px solid var(--border-strong);
   background: var(--surface-3);
@@ -2600,33 +2585,166 @@ mark.hl-active {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-dim);
+  white-space: nowrap;
 }
 
-.hl-swatch {
-  width: 32px;
-  height: 32px;
+.hl-bucket {
+  --hl: #ffd60a;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 12px 0 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--hl) 50%, transparent);
+  background: color-mix(in srgb, var(--hl) 14%, transparent);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hl-bucket i,
+.lib-buckets i,
+.lib-bucket-dot {
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 2px solid transparent;
+  background: var(--hl);
+  flex: none;
+  display: inline-block;
 }
 
-.hl-swatch.hl-yellow {
-  background: #ffd60a;
+.hl-bucket.on {
+  background: color-mix(in srgb, var(--hl) 35%, transparent);
+  border-color: var(--hl);
 }
 
-.hl-swatch.hl-green {
-  background: var(--neon);
+/* library: colour chips + group by bucket */
+.lib-buckets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.hl-swatch.hl-blue {
-  background: var(--cyan);
+.lib-buckets button {
+  --hl: var(--text-dim);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  font-size: 13px;
+  color: var(--text-dim);
 }
 
-.hl-swatch.hl-pink {
-  background: #ff5caa;
+.lib-buckets button:first-child i {
+  display: none;
 }
 
-.hl-swatch.on {
-  border-color: var(--text);
+.lib-buckets button.on {
+  color: var(--text);
+  border-color: var(--hl);
+  background: color-mix(in srgb, var(--hl) 16%, transparent);
+}
+
+.lib-bucket summary span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.lib-bucket .lib-snip {
+  margin-left: 12px;
+}
+
+.lib-from {
+  flex-basis: 100%;
+  order: 3;
+  text-align: left;
+  font-size: 12.5px;
+  color: var(--text-dim);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* settings: buckets */
+.bucket-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bucket-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 8px;
+  border-radius: 12px;
+  border-left: 4px solid var(--hl);
+  background: var(--surface-2);
+}
+
+.bucket-row input[type='color'] {
+  width: 40px;
+  height: 36px;
+  padding: 2px;
+  border-radius: 8px;
+  flex: none;
+}
+
+.bucket-row .bucket-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.bucket-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 6px;
+  flex-wrap: wrap;
+}
+
+.check-row {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px;
+}
+
+.check-row input {
+  width: 20px;
+  height: 20px;
+}
+
+/* spend meter, top right */
+.usage {
+  display: flex;
+  gap: 8px;
+  font: 500 11px/1 var(--font-mono);
+  color: var(--text-dim);
+  padding: 5px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  flex: none;
+}
+
+.usage i {
+  font-style: normal;
+  color: var(--text-faint);
+}
+
+@media (max-width: 1100px) {
+  .usage {
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    padding: 3px 6px;
+  }
 }
 
 .hl-remove {
@@ -2638,22 +2756,3 @@ mark.hl-active {
   font-weight: 600;
 }
 
-.lib-snip.hl-border-yellow {
-  border-left-color: #ffd60a;
-  background: var(--hl-yellow);
-}
-
-.lib-snip.hl-border-green {
-  border-left-color: var(--neon);
-  background: var(--hl-green);
-}
-
-.lib-snip.hl-border-blue {
-  border-left-color: var(--cyan);
-  background: var(--hl-blue);
-}
-
-.lib-snip.hl-border-pink {
-  border-left-color: #ff5caa;
-  background: var(--hl-pink);
-}

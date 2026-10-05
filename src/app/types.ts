@@ -47,12 +47,21 @@ export interface Lesson {
 }
 
 /** A Library entry: a whole node (course, chapter…) or a highlighted snippet of a chapter. */
+/** A highlighter bucket: a name and a colour. SavedItem.color holds its key. */
+export interface Bucket {
+  key: string
+  name: string
+  color: string
+  position: number
+  archived: boolean
+}
+
 export interface SavedItem {
   id: string
   node_id: string
   kind: 'node' | 'snippet'
   text: string
-  /** highlighter colour for snippets */
+  /** bucket key for snippets (the first four keys are the original colours) */
   color?: string
   created_at: string
 }

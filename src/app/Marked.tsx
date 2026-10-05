@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react'
-import { rangesIn, useHighlights } from './highlight.ts'
+import { colorOf, rangesIn, useHighlights } from './highlight.ts'
 
 /** A paragraph's text with this chapter's highlighter marks drawn on it. Tap a mark to edit it. */
 export function Marked({ text }: { text: string }) {
-  const { items, active, setActive } = useHighlights()
+  const { items, active, setActive, buckets } = useHighlights()
   const ranges = items.length ? rangesIn(text, items) : []
   if (!ranges.length) return <>{text}</>
   const out: ReactNode[] = []
@@ -13,7 +13,8 @@ export function Marked({ text }: { text: string }) {
     out.push(
       <mark
         key={`${r.id}-${r.start}`}
-        className={`hl hl-${r.color} ${active === r.id ? 'hl-active' : ''}`}
+        className={`hl ${active === r.id ? 'hl-active' : ''}`}
+        style={{ '--hl': colorOf(r.color, buckets) } as React.CSSProperties}
         onClick={(e) => {
           e.stopPropagation()
           setActive(active === r.id ? null : r.id)

@@ -1,21 +1,24 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LectureControl } from './Study.tsx'
-import { chainIds, lectureTitle, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import { chainIds, lectureTitle, type Bucket, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import { colorOf } from './highlight.ts'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
-type Sort = 'catalog' | 'recent' | 'az'
+type Sort = 'catalog' | 'recent' | 'az' | 'bucket'
 
 /** How the Library was left: filter, search, sort, folded groups, scroll. Kept on this device. */
 interface View {
   filter: Filter
   query: string
   sort: Sort
+  /** 'all' or a bucket key: show only highlights saved to that bucket */
+  bucket: string
   closed: string[]
   scroll: number
 }
 const VIEW_KEY = 'xe-library-view-v1'
 function loadView(): View {
-  const base: View = { filter: 'all', query: '', sort: 'catalog', closed: [], scroll: 0 }
+  const base: View = { filter: 'all', query: '', sort: 'catalog', bucket: 'all', closed: [], scroll: 0 }
   try {
     return { ...base, ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Partial<View>) }
   } catch {
@@ -39,6 +42,7 @@ interface Props {
   loadAncestors: (ids: string[]) => Promise<Record<string, TreeNode>>
   onOpen: (nodeId: string) => void
   onRemove: (item: SavedItem) => void
+  buckets: Bucket[]
 }
 
 interface ChapterGroup {
@@ -79,24 +83,29 @@ const SORTS: [Sort, string][] = [
   ['catalog', 'Course order'],
   ['recent', 'Recently saved'],
   ['az', 'A–Z'],
+  ['bucket', 'Group by bucket'],
 ]
 
 /**
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets }: Props) {
   const initial = useMemo(loadView, [])
   const [filter, setFilter] = useState<Filter>(initial.filter)
   const [query, setQuery] = useState(initial.query)
   const [sort, setSort] = useState<Sort>(initial.sort)
+  const [bucket, setBucket] = useState(initial.bucket)
   const [closed, setClosed] = useState<Set<string>>(new Set(initial.closed))
   const scrollRef = useRef<HTMLElement>(null)
   const scrollPos = useRef(initial.scroll)
   const byPos = sorter(sort)
 
   // remember the view (and where you'd scrolled to) every time it changes or you leave
-  useEffect(() => saveView({ filter, query, sort, closed: [...closed], scroll: scrollPos.current }), [filter, query, sort, closed])
+  useEffect(
+    () => saveView({ filter, query, sort, bucket, closed: [...closed], scroll: scrollPos.current }),
+    [filter, query, sort, bucket, closed],
+  )
   useEffect(
     () => () => saveView({ ...loadView(), scroll: scrollPos.current }),
     [],
@@ -138,6 +147,7 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
       const type: Filter =
         item.kind === 'lecture' ? 'lecture' : item.kind === 'snippet' ? 'snippet' : node.level === 'course' ? 'course' : 'chapter'
       if (filter !== 'all' && filter !== type) continue
+      if (bucket !== 'all' && (item.kind !== 'snippet' || ((item as SavedItem).color ?? 'yellow') !== bucket)) continue
       const chain = chainIds(item.node_id, nodes).map((id) => nodes[id])
       const [subject, branch, course, chapter] = chain
       if (!subject || !branch || !course) continue
@@ -169,7 +179,38 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
     }
     const list = [...subjects.values()]
     return sort === 'recent' ? list.sort((a, b) => b.latest.localeCompare(a.latest)) : list.sort((a, b) => a.node.title.localeCompare(b.node.title))
-  }, [saved, lectures, nodes, filter, query, sort])
+  }, [saved, lectures, nodes, filter, query, sort, bucket])
+
+  /** highlights per bucket key (for the colour chips) */
+  const perBucket = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const x of saved) if (x.kind === 'snippet') m.set(x.color ?? 'yellow', (m.get(x.color ?? 'yellow') ?? 0) + 1)
+    return m
+  }, [saved])
+  /** buckets that are live or still hold highlights, in order */
+  const shownBuckets = buckets.filter((b) => !b.archived || perBucket.get(b.key))
+
+  /** Group by bucket: every highlight under its bucket, newest first, with where it came from. */
+  const byBucket = useMemo(() => {
+    if (sort !== 'bucket') return []
+    const q = query.trim().toLowerCase()
+    return shownBuckets
+      .filter((b) => bucket === 'all' || b.key === bucket)
+      .map((b) => {
+        const items = saved
+          .filter((x) => x.kind === 'snippet' && (x.color ?? 'yellow') === b.key)
+          .filter((x) => {
+            if (!q) return true
+            const chain = chainIds(x.node_id, nodes).map((id) => nodes[id]?.title ?? '')
+            return [x.text, ...chain].join(' ').toLowerCase().includes(q)
+          })
+          .sort((a, c) => c.created_at.localeCompare(a.created_at))
+        return { bucket: b, items }
+      })
+      .filter((g) => g.items.length)
+    // shownBuckets is derived from buckets + perBucket
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort, query, bucket, saved, nodes, buckets, perBucket])
 
   // put the scroll back where it was once the groups have rendered
   const restored = useRef(false)
@@ -212,6 +253,24 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
             </button>
           ))}
         </div>
+        {shownBuckets.length > 0 && perBucket.size > 0 && (
+          <div className="lib-buckets" role="group" aria-label="Filter by bucket">
+            <button className={bucket === 'all' ? 'on' : ''} onClick={() => setBucket('all')}>
+              All colours
+            </button>
+            {shownBuckets.map((b) => (
+              <button
+                key={b.key}
+                className={bucket === b.key ? 'on' : ''}
+                style={{ '--hl': b.color } as React.CSSProperties}
+                onClick={() => setBucket(bucket === b.key ? 'all' : b.key)}
+              >
+                <i />
+                {b.name} <span className="count">{perBucket.get(b.key) ?? 0}</span>
+              </button>
+            ))}
+          </div>
+        )}
         <div className="lib-tools">
           <label className="lib-sort">
             Sort
@@ -240,6 +299,47 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
             here, filed by subject, branch and course.
           </p>
         </div>
+      ) : sort === 'bucket' ? (
+        byBucket.length === 0 ? (
+          <p className="lib-empty">No highlights{bucket !== 'all' || query ? ' match' : ' yet'}.</p>
+        ) : (
+          byBucket.map(({ bucket: b, items }) => (
+            <details key={b.key} className="lib-subject lib-bucket" open={!closed.has(`bucket:${b.key}`)}>
+              <summary
+                style={{ '--hl': b.color } as React.CSSProperties}
+                onClick={(e) => {
+                  e.preventDefault()
+                  toggle(`bucket:${b.key}`)
+                }}
+              >
+                <span>
+                  <i className="lib-bucket-dot" />
+                  {b.name}
+                </span>
+                <span className="count">{items.length}</span>
+              </summary>
+              {items.map((sn) => {
+                const chain = chainIds(sn.node_id, nodes).map((id) => nodes[id])
+                const course = chain[2]
+                const chapter = chain[3]
+                return (
+                  <blockquote key={sn.id} className="lib-snip" style={{ '--hl': b.color } as React.CSSProperties}>
+                    <p>{sn.text}</p>
+                    {chapter && (
+                      <button className="lib-from" onClick={() => onOpen(chapter.id)}>
+                        {course?.meta.code ? `${course.meta.code} · ` : ''}
+                        {course?.title} › Ch {chapter.position + 1} {chapter.title}
+                      </button>
+                    )}
+                    <button className="lib-x" onClick={() => onRemove(sn)} aria-label="Remove highlight">
+                      ×
+                    </button>
+                  </blockquote>
+                )
+              })}
+            </details>
+          ))
+        )
       ) : tree.length === 0 ? (
         <p className="lib-empty">{missing.length ? 'Loading…' : 'No matches.'}</p>
       ) : (
@@ -316,7 +416,11 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
                           {ch.snippets
                             .sort((a, b) => a.created_at.localeCompare(b.created_at))
                             .map((sn) => (
-                              <blockquote key={sn.id} className={`lib-snip hl-border-${sn.color ?? 'yellow'}`}>
+                              <blockquote
+                                key={sn.id}
+                                className="lib-snip"
+                                style={{ '--hl': colorOf(sn.color, buckets) } as React.CSSProperties}
+                              >
                                 <p>{sn.text}</p>
                                 <button className="lib-x" onClick={() => onRemove(sn)} aria-label="Remove highlight">
                                   ×

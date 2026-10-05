@@ -20,6 +20,7 @@ import {
   CHILD_LEVEL,
   chainIds,
   liveKey,
+  type Bucket,
   type CheckResult,
   type Extra,
   type Lesson,
@@ -37,6 +38,8 @@ import { AudioProvider } from './MiniPlayer.tsx'
 import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
+import { Usage } from './Usage.tsx'
+import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
 const SUGGESTIONS = ['Economics', 'Banking', 'Organic Chemistry', 'Music Theory', 'Psychology', 'Philosophy']
@@ -101,6 +104,8 @@ export default function App() {
   /** node id → last opened; drives the "explored" colour and resume-where-you-left-off */
   const [visited, setVisited] = useState<Map<string, string>>(new Map())
   const [saved, setSaved] = useState<SavedItem[]>([])
+  const [buckets, setBuckets] = useState<Bucket[]>(DEFAULT_BUCKETS)
+  const [showUsage, setShowUsage] = useState(true)
   /** nodes fetched only for the Library or a resume (not part of any open panel) */
   const [extra, setExtra] = useState<Record<string, TreeNode>>({})
   /** tiles streaming in before they are saved */
@@ -143,6 +148,9 @@ export default function App() {
         s.saved().catch(() => []),
       ])
       setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
+      setBuckets(await s.buckets().catch(() => DEFAULT_BUCKETS))
+      const su = await s.pref<boolean>('showUsage').catch(() => null)
+      if (su !== null) setShowUsage(su)
       const t = await s.pref<Teacher>('teacher').catch(() => null)
       if (t) setTeacher((cur) => ({ ...cur, ...t }))
       setStore(s)
@@ -542,6 +550,20 @@ export default function App() {
     await store.recolorSaved(item.id, color).catch(() => setSaved((s) => s.map((x) => (x.id === item.id ? item : x))))
   }
 
+  const saveBucket = async (b: Bucket) => {
+    if (!store) return
+    setBuckets((list) => {
+      const rest = list.filter((x) => x.key !== b.key)
+      return [...rest, b].sort((x, y) => x.position - y.position)
+    })
+    await store.saveBucket(b).catch(() => {})
+  }
+
+  const toggleUsage = (on: boolean) => {
+    setShowUsage(on)
+    void store?.setPref('showUsage', on).catch(() => {})
+  }
+
   const removeSaved = async (item: SavedItem) => {
     if (!store) return
     setSaved((s) => s.filter((x) => x.id !== item.id))
@@ -693,6 +715,7 @@ export default function App() {
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>
+          {showUsage && <Usage />}
         </header>
 
         <aside className="rail">
@@ -740,6 +763,7 @@ export default function App() {
             loadAncestors={loadAncestors}
             onOpen={(id) => void openById(id)}
             onRemove={(x) => void removeSaved(x)}
+            buckets={buckets}
           />
         )}
 
@@ -815,6 +839,7 @@ export default function App() {
                     onSaveSnippet={(t, c) => void saveSnippet(chapter, t, c)}
                     highlights={saved.filter((x) => x.kind === 'snippet' && x.node_id === chapter.id)}
                     onRecolor={(x, c) => void recolor(x, c)}
+                    buckets={buckets}
                     onRemoveHighlight={(x) => void removeSaved(x)}
                     studyTools={studyTools}
                     onToggleStudyTools={toggleStudyTools}
@@ -858,6 +883,10 @@ export default function App() {
             mode={store?.mode}
             teacher={teacher}
             onTeacher={saveTeacher}
+            buckets={buckets}
+            onSaveBucket={(b) => void saveBucket(b)}
+            showUsage={showUsage}
+            onShowUsage={toggleUsage}
             onSave={(s) => {
               setSettings(s)
               saveSettings(s)

@@ -21,11 +21,15 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   the subject rail. On phones a breadcrumb trail jumps back to any level.
 - **Each subject remembers where you were.** Hop Music → Physics → Chemistry → back to Music and
   you land exactly where you left Music (tap the subject you're in to go back to its top). Synced.
-- **Highlighter.** Select text in a chapter (or a deeper dive) and pick yellow, green, blue or
-  pink; marks stay on the text every visit, on every device. Tap a mark to recolour or remove it.
-  Highlights also appear in the Library under their chapter, in their colour.
+- **Highlighter buckets.** Select text in a chapter (or a deeper dive) and tap a bucket — each has
+  its own name and colour (Settings → Highlighter buckets: rename, recolour, add, hide). Marks stay
+  on the text every visit, on every device. Tap a mark to move it to another bucket or remove it.
+  The four original colours are the starter buckets, so older highlights keep their colour.
 - **Study tools toolbar stays frozen** at the top of the chapter while you scroll.
-- **Library tab** (pinned in the top bar). ☆ any course or chapter, or highlight chapter text →
+- **Spend meter** (top right): OpenRouter spend on the site's key — all time · week · today, to
+  three decimals. Turn it off in Settings.
+- **Library tab** (pinned in the top bar). Filter by bucket with the colour chips, or **Sort → Group
+  by bucket** to see every highlight under its bucket with a link back to its chapter. ☆ any course or chapter, or highlight chapter text →
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
   in catalog order, with search, type filters, sort (course order / recently saved / A–Z), fold any
   subject or course, Open all / Close all — and it reopens exactly how you left it.
@@ -79,7 +83,7 @@ password signs every device out; **Settings → Lock this device** signs one out
 ## Storage
 
 Supabase project `dfhjesjzceyhzbtojkcw`, tables `xe_nodes`, `xe_lessons`, `xe_completions`,
-`xe_visits`, `xe_saved`, `xe_extras`, `xe_prefs` (migrations in `supabase/migrations/`, all applied). This is what syncs
+`xe_visits`, `xe_saved`, `xe_extras`, `xe_prefs`, `xe_buckets` (migrations in `supabase/migrations/`, all applied). This is what syncs
 across devices. The browser uses the
 publishable key; RLS allows read + insert, and delete of whole subjects only.
 

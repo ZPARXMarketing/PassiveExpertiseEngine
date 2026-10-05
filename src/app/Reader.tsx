@@ -15,9 +15,9 @@ import {
   Writing,
   type ToolCtx,
 } from './Study.tsx'
-import { COLORS, HighlightCtx } from './highlight.ts'
+import { HighlightCtx } from './highlight.ts'
 import { Marked } from './Marked.tsx'
-import { lectureCounts, type CheckResult, type Lesson, type SavedItem, type TreeNode } from './types.ts'
+import { lectureCounts, type Bucket, type CheckResult, type Lesson, type SavedItem, type TreeNode } from './types.ts'
 
 interface Props {
   chapter: TreeNode
@@ -38,6 +38,8 @@ interface Props {
   onSaveSnippet: (text: string, color: string) => void
   /** this chapter's highlighter marks */
   highlights: SavedItem[]
+  /** highlighter buckets, in order (archived ones excluded from the bar) */
+  buckets: Bucket[]
   onRecolor: (item: SavedItem, color: string) => void
   onRemoveHighlight: (item: SavedItem) => void
   studyTools: boolean
@@ -100,7 +102,8 @@ export function Reader(p: Props) {
   }
   const [activeMark, setActiveMark] = useState<string | null>(null)
   const active = p.highlights.find((h) => h.id === activeMark)
-  const hl = { items: p.highlights, active: activeMark, setActive: setActiveMark }
+  const hl = { items: p.highlights, active: activeMark, setActive: setActiveMark, buckets: p.buckets }
+  const live = p.buckets.filter((b) => !b.archived)
 
   const toggleDeeper = (h: string) =>
     setDeeper((o) => {
@@ -115,22 +118,35 @@ export function Reader(p: Props) {
       <article className="column reader" onClick={() => activeMark && setActiveMark(null)}>
         {selection.length > 2 && (
           <div className="hl-bar" onMouseDown={(e) => e.preventDefault()} role="toolbar" aria-label="Highlight">
-            <span>Highlight</span>
-            {COLORS.map((c) => (
-              <button key={c} className={`hl-swatch hl-${c}`} onClick={() => saveSelection(c)} aria-label={`Highlight ${c}`} />
+            <span>Save to</span>
+            {live.map((b) => (
+              <button
+                key={b.key}
+                className="hl-bucket"
+                style={{ '--hl': b.color } as React.CSSProperties}
+                onClick={() => saveSelection(b.key)}
+                aria-label={`Save to ${b.name}`}
+              >
+                <i />
+                {b.name}
+              </button>
             ))}
           </div>
         )}
         {active && !selection && (
           <div className="hl-bar" role="toolbar" aria-label="Edit highlight" onClick={(e) => e.stopPropagation()}>
-            {COLORS.map((c) => (
+            {live.map((b) => (
               <button
-                key={c}
-                className={`hl-swatch hl-${c} ${active.color === c ? 'on' : ''}`}
-                onClick={() => p.onRecolor(active, c)}
-                aria-label={`Make ${c}`}
-                aria-pressed={active.color === c}
-              />
+                key={b.key}
+                className={`hl-bucket ${(active.color ?? 'yellow') === b.key ? 'on' : ''}`}
+                style={{ '--hl': b.color } as React.CSSProperties}
+                onClick={() => p.onRecolor(active, b.key)}
+                aria-label={`Move to ${b.name}`}
+                aria-pressed={(active.color ?? 'yellow') === b.key}
+              >
+                <i />
+                {b.name}
+              </button>
             ))}
             <button
               className="hl-remove"

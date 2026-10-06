@@ -4,12 +4,10 @@
  * instant, so the plan re-flows whenever a step is ticked off, a path changes or
  * availability changes (falling behind = the rest moves forward).
  *
- * Priority (who gets the earliest free time):
- *   1. Pressing — marked by hand, or a dated path that would otherwise miss its date
- *      (it gets promoted automatically and pushes the rest back)
- *   2. ASAP
- *   3. By a date, earliest due first
- *   4. No rush — whatever time is left
+ * Priority = the learner's own order (the Cal list, top first). Paths not placed in that
+ * list yet fall in by timing: ASAP first, then by due date, then No rush. Nothing moves
+ * on its own: if the order makes a dated path late, the outlook says so and the learner
+ * decides (make it fit, put due dates first, or keep the order anyway).
  */
 
 import type { Availability, Path, PathStep } from './types.ts'
@@ -46,6 +44,8 @@ export interface PathOutlook {
   pressing: boolean
   /** promoted automatically (not marked by hand) */
   promoted: boolean
+  /** its unfinished chapters are all studied in a path higher up */
+  covered: boolean
 }
 
 /** smallest piece worth scheduling when a step has to be split */
@@ -72,31 +72,37 @@ export function blocksOn(date: Date, a: Availability): { start: string; end: str
 
 const RANK: Record<Timing, number> = { asap: 1, date: 2, none: 3 }
 
+/** Scheduled paths in priority order: the learner's list first, then any not in it yet by timing. */
+export function priorityOrder(paths: Path[], meta: PathMeta, order: string[]): Path[] {
+  const live = paths.filter((p) => !p.archived && p.steps.length)
+  const at = new Map(order.map((id, i) => [id, i]))
+  const due = (p: Path) => (timingOf(p, meta) === 'date' && p.due ? p.due : '9999')
+  const fallback = (a: Path, b: Path) =>
+    RANK[timingOf(a, meta)] - RANK[timingOf(b, meta)] || due(a).localeCompare(due(b)) || a.created_at.localeCompare(b.created_at)
+  const placed = live.filter((p) => at.has(p.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!)
+  const rest = live.filter((p) => !at.has(p.id)).sort(fallback)
+  // new ASAP paths join at the top, the rest at the bottom
+  return [...rest.filter((p) => timingOf(p, meta) === 'asap'), ...placed, ...rest.filter((p) => timingOf(p, meta) !== 'asap')]
+}
+
+/** The order that lets dated paths make their dates: earliest due first, then the rest as they were. */
+export function dueFirst(ordered: Path[], meta: PathMeta): string[] {
+  const dated = ordered.filter((p) => timingOf(p, meta) === 'date' && p.due).sort((a, b) => a.due!.localeCompare(b.due!))
+  return [...dated, ...ordered.filter((p) => !dated.includes(p))].map((p) => p.id)
+}
+
 export function planSchedule(
   paths: Path[],
   done: Set<string>,
   avail: Availability,
   meta: PathMeta = {},
+  order: string[] = [],
   now = new Date(),
 ): { sessions: Session[]; outlook: PathOutlook[] } {
-  const live = paths.filter((p) => !p.archived && p.steps.length)
-  const promoted = new Set<string>()
-  // place, then promote any dated path that misses its date and place again (a few rounds)
-  let out = place(live, done, avail, meta, promoted, now)
-  for (let round = 0; round < 4; round++) {
-    const missing = out.outlook.filter((o) => o.timing === 'date' && o.late && !o.pressing).map((o) => o.pathId)
-    if (!missing.length) break
-    for (const id of missing) promoted.add(id)
-    out = place(live, done, avail, meta, promoted, now)
-  }
-  return out
+  return place(priorityOrder(paths, meta, order), done, avail, meta, now)
 }
 
-function place(live: Path[], done: Set<string>, avail: Availability, meta: PathMeta, promoted: Set<string>, now: Date) {
-  const pressing = (p: Path) => !!meta[p.id]?.pressing || promoted.has(p.id)
-  const rank = (p: Path) => (pressing(p) ? 0 : RANK[timingOf(p, meta)])
-  const due = (p: Path) => (timingOf(p, meta) === 'date' && p.due ? p.due : '9999')
-  const order = [...live].sort((a, b) => rank(a) - rank(b) || due(a).localeCompare(due(b)) || a.created_at.localeCompare(b.created_at))
+function place(order: Path[], done: Set<string>, avail: Availability, meta: PathMeta, now: Date) {
   // a chapter in more than one path is studied once, for the path that comes first
   const taken = new Set<string>()
   const queues = order.map((p) => ({
@@ -150,8 +156,9 @@ function place(live: Path[], done: Set<string>, avail: Availability, meta: PathM
       unplaced,
       late: unplaced > 0 || (timing === 'date' && !!q.path.due && !!finish && finish > q.path.due),
       timing,
-      pressing: pressing(q.path),
-      promoted: promoted.has(q.path.id) && !meta[q.path.id]?.pressing,
+      pressing: false,
+      promoted: false,
+      covered: !q.steps.length && !mine.length && q.path.steps.some((s) => !done.has(s.node_id)),
     }
   })
   return { sessions, outlook }
@@ -170,6 +177,7 @@ export function shrinkToFit(
   done: Set<string>,
   avail: Availability,
   meta: PathMeta,
+  order: string[] = [],
 ): { factor: number; steps: Record<string, PathStep[]> } | null {
   const live = paths.filter((p) => !p.archived && p.steps.length)
   const scaled = (f: number) =>
@@ -177,7 +185,7 @@ export function shrinkToFit(
       ...p,
       steps: p.steps.map((s) => (done.has(s.node_id) ? s : { ...s, minutes: Math.max(MIN_STEP, Math.round((s.minutes * f) / 5) * 5) })),
     }))
-  const fits = (f: number) => !planSchedule(scaled(f), done, avail, meta).outlook.some((o) => o.late || o.unplaced)
+  const fits = (f: number) => !planSchedule(scaled(f), done, avail, meta, order).outlook.some((o) => o.late || o.unplaced)
   if (fits(1)) return { factor: 1, steps: {} }
   if (!fits(0)) return null
   let lo = 0

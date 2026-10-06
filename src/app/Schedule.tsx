@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Strip, useFit } from './fit.tsx'
 import type { PanelWidth } from './PanelWidth.tsx'
 import { generate, type Settings } from './generate.ts'
@@ -20,6 +20,7 @@ import {
   type Timing,
 } from './schedule.ts'
 import type { NewPath } from './store.ts'
+import { dueFirst } from './schedule.ts'
 import type { Availability, FreeBlock, Path, TreeNode } from './types.ts'
 
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
@@ -41,8 +42,14 @@ interface Props {
   onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
   onSave: (p: NewPath) => Promise<Path>
   onEditFree: () => void
-  /** Paths | Schedule switch shown when the left panel is tucked away (narrow windows) */
-  subnav?: React.ReactNode
+  /** scheduled paths, highest priority first (the Cal list) */
+  ordered: Path[]
+  onOrder: (ids: string[]) => void
+  /** "keep my order anyway" for the current set of problems */
+  ack: string
+  onAck: (signature: string) => void
+  /** the priority list, shown on top when the left panel is tucked away (narrow windows) */
+  narrowList?: React.ReactNode
 }
 
 /**
@@ -215,19 +222,74 @@ export function Schedule(p: Props) {
   }
   const { ref: colsRef, folded } = useFit([250, ...cols.map((c) => (c.wide ? 300 : 250))], keep, p.panelWidth)
 
+  const problems = outlook.filter((o) => o.late || o.unplaced)
+  const signature = `${p.ordered.map((x) => x.id).join(',')}|${problems.map((o) => o.pathId).join(',')}`
+  const describe = (o: PathOutlook) => {
+    const x = pathOf(o.pathId)
+    if (!x) return ''
+    if (o.unplaced && !o.finish) return `${x.title}: none of it fits your free time yet`
+    if (o.unplaced) return `${x.title}: ${hours(o.unplaced)} doesn’t fit`
+    return `${x.title}: finishes ${fmt(o.finish)}, after it’s due ${fmt(x.due!)}`
+  }
+
   return (
     <main className="explore schedule-view">
-      {p.subnav}
-      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
-        {folded[0] ? (
-          <Strip kicker="Years" picked={year} onOpen={() => setKeep(0)} />
+      {p.narrowList && <div className="narrow-only cal-narrow">{p.narrowList}</div>}
+      {!live.length ? (
+        <div className="lib-empty">
+          <h2>Nothing scheduled yet</h2>
+          <p>Schedule a path first: open one in Paths and tap “Schedule this path”. Its chapters get laid into your free time here.</p>
+          <button className="btn-neon" onClick={p.onGoPaths}>
+            Go to Paths
+          </button>
+        </div>
+      ) : noTime ? (
+        <div className="lib-empty">
+          <h2>When can you study?</h2>
+          <p>Tell it when you’re free and your scheduled paths get planned into that time.</p>
+          <button className="btn-neon" onClick={p.onEditFree}>
+            Set my free time
+          </button>
+        </div>
+      ) : (
+        problems.length > 0 &&
+        (p.ack === signature ? (
+          <p className="cal-kept">
+            Keeping your order: {problems.map(describe).join(' · ')}.{' '}
+            <button className="reveal" onClick={() => p.onAck('')}>
+              Review
+            </button>
+          </p>
         ) : (
-          <section className="column">
-            <header className="column-head">
-              <span className="column-kicker">Schedule</span>
-              <h2>Your study plan</h2>
-            </header>
-            {hasPlan && (
+          <div className="cal-warn" role="alert">
+            <h4>⚠ This order doesn’t fit</h4>
+            <ul>
+              {problems.map((o) => (
+                <li key={o.pathId}>{describe(o)}</li>
+              ))}
+            </ul>
+            <div className="cal-warn-actions">
+              <button className="btn-neon" onClick={() => p.onOrder(dueFirst(p.ordered, p.meta))}>
+                Put due dates first
+              </button>
+              <button className="btn-ghost" onClick={() => p.onAck(signature)}>
+                Keep my order
+              </button>
+            </div>
+            <FitBox paths={paths} done={done} availability={availability} meta={p.meta} order={p.ordered.map((x) => x.id)} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
+          </div>
+        ))
+      )}
+      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
+        {hasPlan &&
+          (folded[0] ? (
+            <Strip kicker="Years" picked={year} onOpen={() => setKeep(0)} />
+          ) : (
+            <section className="column">
+              <header className="column-head">
+                <span className="column-kicker">Years</span>
+                <h2>Your plan</h2>
+              </header>
               <ol className="tiles">
                 {years.map((y) =>
                   tile(y, year === y, y, within(y), () => {
@@ -238,52 +300,8 @@ export function Schedule(p: Props) {
                   }),
                 )}
               </ol>
-            )}
-            {!live.length && (
-              <div className="sched-hint">
-                <p className="sheet-note">Schedule a path first: the plan lays its chapters into your free time.</p>
-                <button className="btn-neon" onClick={p.onGoPaths}>
-                  Go to Paths
-                </button>
-              </div>
-            )}
-            {!!live.length && noTime && (
-              <div className="sched-hint">
-                <p className="sheet-note">Tell it when you can study and your paths get planned into that time.</p>
-                <button className="btn-neon" onClick={p.onEditFree}>
-                  Set my free time
-                </button>
-              </div>
-            )}
-            {!noTime && outlook.some((o) => o.finish || o.unplaced) && (
-              <ul className="outlook">
-                {outlook.map((o) => {
-                  const x = pathOf(o.pathId)
-                  if (!x || (!o.finish && !o.unplaced)) return null
-                  return (
-                    <li key={o.pathId} className={o.late ? 'late' : ''} style={{ '--pc': x.color } as React.CSSProperties}>
-                      <i className="path-dot" />
-                      <span>
-                        <b>{x.title}</b>
-                        {o.pressing && ' 🔥'}
-                        {o.unplaced
-                          ? o.finish
-                            ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}.`
-                            : ` — none of it fits your free time yet.`
-                          : o.late
-                            ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}.`
-                            : ` — ${o.timing === 'none' ? 'no rush, ' : ''}done ${fmt(o.finish)}${o.timing === 'date' && x.due ? ` (due ${fmt(x.due)})` : ''}${o.promoted ? ', moved ahead to make its date' : ''}.`}
-                      </span>
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-            {!noTime && outlook.some((o) => o.late || o.unplaced) && (
-              <FitBox paths={paths} done={done} availability={availability} meta={p.meta} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
-            )}
-          </section>
-        )}
+            </section>
+          ))}
         {cols.map((c, i) =>
           folded[i + 1] ? (
             <Strip key={c.kicker + i} kicker={c.kicker} picked={c.picked} onOpen={() => setKeep(i + 1)} />
@@ -438,6 +456,7 @@ function FitBox({
   done,
   availability,
   meta,
+  order,
   nodes,
   settings,
   onSave,
@@ -447,13 +466,14 @@ function FitBox({
   done: Set<string>
   availability: Availability
   meta: PathMeta
+  order: string[]
   nodes: Record<string, TreeNode>
   settings: Settings
   onSave: (p: NewPath) => Promise<Path>
   onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
 }) {
   const live = paths.filter((x) => !x.archived && x.steps.length)
-  const shrink = useMemo(() => shrinkToFit(paths, done, availability, meta), [paths, done, availability, meta])
+  const shrink = useMemo(() => shrinkToFit(paths, done, availability, meta, order), [paths, done, availability, meta, order])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [proposal, setProposal] = useState<{ summary: string; changes: FitChange[] } | null>(null)
@@ -701,6 +721,108 @@ function HourBreakdown({
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+/**
+ * Cal's left panel: the scheduled paths, highest priority first. Unlock and drag to change
+ * the order (it re-plans at once); each shows whether it's on track, late or doesn't fit.
+ */
+export function CalList({
+  ordered,
+  outlook,
+  onOrder,
+  onOpenPath,
+}: {
+  ordered: Path[]
+  outlook: PathOutlook[]
+  onOrder: (ids: string[]) => void
+  onOpenPath: (id: string) => void
+}) {
+  const [unlocked, setUnlocked] = useState(false)
+  const [dragId, setDragId] = useState('')
+  const [ids, setIds] = useState<string[] | null>(null)
+  const rows = useRef(new Map<string, HTMLLIElement>())
+  const shown = ids ? ids.map((id) => ordered.find((x) => x.id === id)!).filter(Boolean) : ordered
+  const start = (id: string, e: React.PointerEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragId(id)
+    setIds(ordered.map((x) => x.id))
+  }
+  const moveTo = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragId || !ids) return
+    let to = 0
+    for (const id of ids) {
+      if (id === dragId) continue
+      const r = rows.current.get(id)?.getBoundingClientRect()
+      if (r && e.clientY > r.top + r.height / 2) to++
+    }
+    const from = ids.indexOf(dragId)
+    if (to === from) return
+    const next = [...ids]
+    next.splice(from, 1)
+    next.splice(to, 0, dragId)
+    setIds(next)
+  }
+  const end = () => {
+    if (ids) onOrder(ids)
+    setDragId('')
+    setIds(null)
+  }
+  return (
+    <div className="cal-rail">
+      <div className="rail-sort cal-lock">
+        <span>Priority, top first</span>
+        <button onClick={() => setUnlocked((u) => !u)} aria-label={unlocked ? 'Lock the order' : 'Unlock to reorder'}>
+          {unlocked ? '🔓 Done' : '🔒 Reorder'}
+        </button>
+      </div>
+      {!ordered.length && <p className="rail-empty">Nothing scheduled. Schedule a path in Paths.</p>}
+      <ol className="cal-list">
+        {shown.map((x, i) => {
+          const o = outlook.find((y) => y.pathId === x.id)
+          const state = !o ? '' : o.covered ? 'covered' : o.unplaced && !o.finish ? 'nofit' : o.unplaced || o.late ? 'late' : o.finish ? 'ok' : 'done'
+          return (
+            <li
+              key={x.id}
+              className={`cal-row ${dragId === x.id ? 'dragging' : ''}`}
+              style={{ '--pc': x.color } as React.CSSProperties}
+              ref={(el) => {
+                if (el) rows.current.set(x.id, el)
+                else rows.current.delete(x.id)
+              }}
+            >
+              <span className="cal-rank">{i + 1}</span>
+              <button className="cal-main" onClick={() => onOpenPath(x.id)}>
+                <span className="cal-title">{x.title}</span>
+                <span className={`cal-state ${state}`}>
+                  {state === 'ok'
+                    ? `✓ done ${fmt(o!.finish)}`
+                    : state === 'late'
+                      ? o!.unplaced
+                        ? `⚠ ${hours(o!.unplaced)} won’t fit`
+                        : `⚠ late: ${fmt(o!.finish)}`
+                      : state === 'nofit'
+                        ? '✗ doesn’t fit'
+                        : state === 'covered'
+                          ? 'Covered by a path above'
+                          : state === 'done'
+                            ? 'All done'
+                            : ''}
+                  {x.due && ` · due ${fmt(x.due)}`}
+                </span>
+              </button>
+              {unlocked && (
+                <span className="rail-grip" onPointerDown={(e) => start(x.id, e)} onPointerMove={moveTo} onPointerUp={end} onPointerCancel={end} aria-label={`Drag ${x.title}`}>
+                  ≡
+                </span>
+              )}
+            </li>
+          )
+        })}
+      </ol>
     </div>
   )
 }

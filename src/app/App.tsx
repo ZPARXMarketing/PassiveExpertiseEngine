@@ -13,9 +13,9 @@ import {
   type RawItem,
 } from './parse.ts'
 import { openStore, type NewPath, type Store } from './store.ts'
-import { Paths, PATH_COLORS, hours, type Filter, type PathSort } from './Paths.tsx'
-import { AvailabilityEditor, Schedule } from './Schedule.tsx'
-import { EMPTY_AVAILABILITY, planSchedule, weeklyMinutes, type PathMeta, type Timing } from './schedule.ts'
+import { PathList, Paths, PATH_COLORS, hours, type Filter, type PathSort } from './Paths.tsx'
+import { AvailabilityEditor, CalList, Schedule } from './Schedule.tsx'
+import { EMPTY_AVAILABILITY, planSchedule, priorityOrder, weeklyMinutes, type PathMeta, type Timing } from './schedule.ts'
 import { childrenOrGenerate } from './tree.ts'
 import {
   chainIds,
@@ -119,14 +119,10 @@ export default function App() {
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
-  const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'schedule'>('explore')
-  /** the Library-mode section last open, so the Library toggle returns to it */
-  /** the Paths-mode section last open (Paths or Schedule), so the switch returns to it */
-  const [section, setSection] = useState<'paths' | 'schedule'>('paths')
-  useEffect(() => {
-    if (tab === 'paths' || tab === 'schedule') setSection(tab)
-  }, [tab])
-  const plansMode = tab === 'paths' || tab === 'schedule'
+  const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'cal'>('explore')
+  /** Cal: priority order of scheduled paths (top first) and "keep my order anyway" (synced) */
+  const [pathOrder, setPathOrder] = useState<string[]>([])
+  const [calAck, setCalAck] = useState('')
   /** Library mode: the subject picked in the left panel */
   const [libSubject, setLibSubject] = useState('')
   /** Paths: which list is open, and each path's timing / pressing (synced pref) */
@@ -210,6 +206,8 @@ export default function App() {
       const av = await s.pref<Availability>('availability').catch(() => null)
       if (av) setAvailability({ ...EMPTY_AVAILABILITY, ...av })
       setPathMeta((await s.pref<PathMeta>('pathMeta').catch(() => null)) ?? {})
+      setPathOrder((await s.pref<string[]>('pathOrder').catch(() => null)) ?? [])
+      setCalAck((await s.pref<string>('calAck').catch(() => null)) ?? '')
     })
   }, [])
 
@@ -628,20 +626,6 @@ export default function App() {
     return m
   }, [saved, lectures, known])
 
-  /** narrow windows: the left panel is tucked away, so Paths mode gets a small switch on top */
-  const subnav = (
-    <div className="mode-sub" role="tablist" aria-label="Paths or Schedule">
-      {(['paths', 'schedule'] as const).map((k) => (
-        <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
-          {k === 'paths' ? '🧭 Paths' : '🗓 Schedule'}
-        </button>
-      ))}
-      <button className="mode-sub-free" onClick={() => setEditingFree(true)}>
-        🕒
-      </button>
-    </div>
-  )
-
   const railSubjects = tab === 'library' ? sortedSubjects.filter((x) => savedSubjects.has(x.id)) : sortedSubjects
 
   const chooseRailSort = (next: 'az' | 'new' | 'custom') => {
@@ -736,7 +720,16 @@ export default function App() {
     })
 
   /** the study plan, worked out once and shared by Paths and Schedule */
-  const plan = useMemo(() => planSchedule(paths, done, availability, pathMeta), [paths, done, availability, pathMeta])
+  const plan = useMemo(() => planSchedule(paths, done, availability, pathMeta, pathOrder), [paths, done, availability, pathMeta, pathOrder])
+  const ordered = useMemo(() => priorityOrder(paths, pathMeta, pathOrder), [paths, pathMeta, pathOrder])
+  const saveOrder = (ids: string[]) => {
+    setPathOrder(ids)
+    void store?.setPref('pathOrder', ids).catch(() => {})
+  }
+  const saveAck = (sig: string) => {
+    setCalAck(sig)
+    void store?.setPref('calAck', sig).catch(() => {})
+  }
 
   const saveAvailability = (a: Availability) => {
     setAvailability(a)
@@ -890,8 +883,11 @@ export default function App() {
             <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
               Library
             </button>
-            <button className={plansMode ? 'on' : ''} onClick={() => setTab(section)}>
+            <button className={tab === 'paths' ? 'on' : ''} onClick={() => setTab('paths')}>
               Paths
+            </button>
+            <button className={tab === 'cal' ? 'on' : ''} onClick={() => setTab('cal')}>
+              Cal
             </button>
           </nav>
           <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />
@@ -901,41 +897,62 @@ export default function App() {
           {showUsage && <Usage />}
         </header>
 
-        <aside className={`rail ${plansMode ? 'rail-sections' : ''}`}>
-          {plansMode ? (
+        <aside className={`rail ${tab === 'cal' ? 'rail-cal' : ''}`}>
+          {tab === 'paths' && store ? (
             <>
-            <div className="rail-head">
-              <span>Workspace</span>
-              {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
-            </div>
-            <nav className="rail-nav" aria-label="Sections">
-              {(
-                [
-                  ['paths', '🧭', 'Paths', paths.length],
-                  ['schedule', '🗓', 'Schedule', 0],
-                ] as const
-              ).map(([k, icon, label, n]) => (
-                <button
-                  key={k}
-                  className={tab === k ? 'on' : ''}
-                  onClick={() => {
-                    setTab(k)
-                    setRailOpen(false)
-                  }}
-                  aria-pressed={tab === k}
-                >
-                  <span className="rail-nav-icon">{icon}</span>
-                  <span className="rail-nav-label">{label}</span>
-                  {n > 0 && <span className="count">{n}</span>}
-                </button>
-              ))}
-            </nav>
-            <button className="free-chip" onClick={() => setEditingFree(true)}>
-              🕒 When I'm free ·{' '}
-              {availability.weekly.length || availability.overrides.some((o) => o.blocks.length)
-                ? `${hours(weeklyMinutes(availability))}/wk`
-                : 'not set'}
-            </button>
+              <div className="rail-head">
+                <span>Paths</span>
+                <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>
+              </div>
+              <PathList
+                store={store}
+                settings={settings}
+                paths={paths}
+                nodes={known}
+                done={done}
+                loadAncestors={loadAncestors}
+                onSave={savePath}
+                onDelete={(id) => void deletePath(id)}
+                onOpen={(id) => void openById(id)}
+                onToggleDone={(id) => void toggleDone(id)}
+                onBuilt={() => {}}
+                selected={pathSel}
+                onSelect={(id) => {
+                  setPathSel(id)
+                  setRailOpen(false)
+                }}
+                filter={pathFilter}
+                onFilter={setPathFilter}
+                sort={pathSort}
+                onSort={setPathSort}
+                meta={pathMeta}
+                onMeta={saveMeta}
+                outlook={plan.outlook}
+                panelWidth={panelWidth}
+              />
+            </>
+          ) : tab === 'cal' ? (
+            <>
+              <div className="rail-head">
+                <span>Scheduled</span>
+                {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+              </div>
+              <CalList
+                ordered={ordered}
+                outlook={plan.outlook}
+                onOrder={saveOrder}
+                onOpenPath={(id) => {
+                  setPathSel(id)
+                  setTab('paths')
+                  setRailOpen(false)
+                }}
+              />
+              <button className="free-chip" onClick={() => setEditingFree(true)}>
+                🕒 When I'm free ·{' '}
+                {availability.weekly.length || availability.overrides.some((o) => o.blocks.length)
+                  ? `${hours(weeklyMinutes(availability))}/wk`
+                  : 'not set'}
+              </button>
             </>
           ) : (
             <>
@@ -1078,11 +1095,10 @@ export default function App() {
             onMeta={saveMeta}
             outlook={plan.outlook}
             panelWidth={panelWidth}
-            subnav={subnav}
           />
         )}
 
-        {tab === 'schedule' && (
+        {tab === 'cal' && (
           <Schedule
             settings={settings}
             paths={paths}
@@ -1099,7 +1115,21 @@ export default function App() {
             onMeta={saveMeta}
             onSave={savePath}
             onEditFree={() => setEditingFree(true)}
-            subnav={subnav}
+            ordered={ordered}
+            onOrder={saveOrder}
+            ack={calAck}
+            onAck={saveAck}
+            narrowList={
+              <CalList
+                ordered={ordered}
+                outlook={plan.outlook}
+                onOrder={saveOrder}
+                onOpenPath={(id) => {
+                  setPathSel(id)
+                  setTab('paths')
+                }}
+              />
+            }
           />
         )}
 

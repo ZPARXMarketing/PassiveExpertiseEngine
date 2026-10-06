@@ -23,25 +23,25 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
-- **Explore | Library | Paths** switch in the top bar; the top bar and the panel switch stay put.
-  - **Library** works like Explore, but only with what you've saved: your saved subjects sit
-    in the left panel (same A–Z / Newest / Custom sort), each opens into branch → course →
-    chapter columns, then that chapter's highlights, lectures and star. **+ Path** on a chapter
-    or a whole course adds it to a path.
-  - **Paths** mode: the left panel holds **Paths** and **Schedule**, plus a small
-    **When I'm free** button.
-- **Paths** — one list of every path, filtered **All / Scheduled / Not scheduled / Archived** and
-  sorted (newest, recently changed, A–Z, due soonest, least time left, most progress). New
-  paths (AI-drafted or empty) start *Not scheduled*; **📅 Schedule this path**, **Unschedule**,
-  **🗄 Archive** / **Restore**. ✦ **New path with AI**: describe the goal, optionally paste the
-  assignment and attach photos/PDFs; the planner (`google/gemini-3.8-flash`) drafts subject ›
-  branch › course › chapter steps with study time; **Create** reuses matches and generates
-  anything missing the way Explore does.
-- **Timing** per scheduled path: **ASAP**, **By a date** or **No rush** (no date needed), plus
-  **🔥 Pressing**. Priority for the earliest free time: Pressing → ASAP → By a date (earliest
-  first) → No rush. A dated path that would miss its date is promoted to Pressing automatically
-  and pushes the others back; each path shows its planned finish.
-- **Schedule** — free time from plain words (AI → weekly blocks + busy days) or by hand. One
+- **Explore | Library | Paths | Cal** switch in the top bar; the top bar and the panel switch
+  stay put. Each mode keeps its list in the left panel, like Explore's subjects:
+  - **Library** — your saved subjects (same A–Z / Newest / Custom sort), each opening into
+    branch → course → chapter columns, then that chapter's highlights, lectures and star.
+    **+ Path** on a chapter or a whole course adds it to a path.
+  - **Paths** — every path, filtered **All / Scheduled / Not scheduled / Archived** and sorted
+    (newest, recently changed, A–Z, due soonest, least time left, most progress), with
+    **✦ New with AI** / **+ Empty** on top. The open path shows on the right. New paths start
+    *Not scheduled*; **📅 Schedule this path**, **Unschedule**, **🗄 Archive** / **Restore**.
+    AI drafting: goal + pasted assignment + photos/PDFs → subject › branch › course › chapter
+    steps (`google/gemini-3.8-flash`); **Create** reuses matches and generates anything missing.
+  - **Cal** — the scheduled paths in **priority order** (top first) with their status (on track,
+    late, doesn't fit, covered by a path above) and **When I'm free** at the bottom. **🔒 Reorder**
+    unlocks dragging; the plan re-flows at once. If the order makes something late, a warning
+    offers **Put due dates first**, **Keep my order** (accept it), or **Make it fit**.
+- **Timing** per scheduled path: **ASAP**, **By a date** or **No rush**. The Cal order decides
+  priority; timing only decides where a newly scheduled path joins it (ASAP on top, dated by due
+  date, No rush at the bottom) and which dates it must make.
+- **Cal plan** — free time from plain words (AI → weekly blocks + busy days) or by hand. One
   drill-down: **Years → Months → Days → Hours → Minutes**; the last column is a minute-by-minute
   timeline of that hour (chapters in path colours, free gaps) with controls per chapter: study
   time −5/+5, earlier/later in its path, done, open. Re-plans on every change. When it doesn't

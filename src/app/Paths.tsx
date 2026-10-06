@@ -4,7 +4,6 @@ import { parsePathPlan, type PathPlan } from './parse.ts'
 import { MAX_ATTACHMENT, type Attachment } from './prompts.ts'
 import type { NewPath, Store } from './store.ts'
 import { bestMatch, buildPath, inventory, type BuildResult } from './tree.ts'
-import { Strip, useFit } from './fit.tsx'
 import type { PanelWidth } from './PanelWidth.tsx'
 import { chainIds, type Path, type PathStep, type TreeNode } from './types.ts'
 import { statusOf, timingOf, type PathMeta, type PathOutlook, type PathStatus, type Timing } from './schedule.ts'
@@ -38,8 +37,6 @@ interface Props {
   onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean; shelved?: boolean }) => void
   outlook: PathOutlook[]
   panelWidth: PanelWidth
-  /** Paths | Schedule switch shown when the left panel is tucked away (narrow windows) */
-  subnav?: React.ReactNode
 }
 
 export type Filter = 'all' | PathStatus
@@ -54,14 +51,9 @@ const SORTS: [PathSort, string][] = [
 ]
 const STATUS_LABEL: Record<PathStatus, string> = { scheduled: '📅 Scheduled', unscheduled: 'Not scheduled', archived: '🗄 Archived' }
 
-/**
- * Paths: goal-specific sequences of chapters, drafted by the AI or put together by hand.
- * One list of every path, filtered (scheduled / not scheduled / archived) and sorted.
- * New ones start "not scheduled"; "Schedule this path" puts one in the plan.
- */
-export function Paths(p: Props) {
-  const { paths, nodes, done, selected, onSelect, filter, onFilter, sort, onSort, meta } = p
-  const path = paths.find((x) => x.id === selected)
+/** Paths in the current filter and sort. */
+function useList(p: Props) {
+  const { paths, done, filter, sort, meta } = p
   const counts = { all: paths.length, scheduled: 0, unscheduled: 0, archived: 0 }
   for (const x of paths) counts[statusOf(x, meta)]++
   const left = (x: Path) => x.steps.filter((s) => !done.has(s.node_id)).reduce((t, s) => t + s.minutes, 0)
@@ -81,7 +73,93 @@ export function Paths(p: Props) {
                 ? progress(b) - progress(a)
                 : b.created_at.localeCompare(a.created_at),
     )
+  return { counts, list, left }
+}
 
+/**
+ * The left panel in Paths mode: new-path buttons, filter (all / scheduled / not scheduled /
+ * archived), sort, and every path — like subjects in Explore.
+ */
+export function PathList(p: Props) {
+  const { paths, done, selected, onSelect, filter, onFilter, sort, onSort, meta } = p
+  const { counts, list, left } = useList(p)
+  return (
+    <div className="path-rail">
+      <div className="path-new">
+        <button className={`btn-neon ${selected === 'new' ? 'on' : ''}`} onClick={() => onSelect('new')}>
+          ✦ New with AI
+        </button>
+        <button
+          className="btn-ghost"
+          onClick={async () => {
+            const made = await p.onSave(blankPath(paths.length))
+            onSelect(made.id)
+          }}
+        >
+          + Empty
+        </button>
+      </div>
+      <div className="path-filter" role="tablist" aria-label="Show">
+        {(['all', 'scheduled', 'unscheduled', 'archived'] as Filter[]).map((f) => (
+          <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => onFilter(f)}>
+            {f === 'all' ? 'All' : f === 'scheduled' ? 'Scheduled' : f === 'unscheduled' ? 'Not scheduled' : 'Archived'}{' '}
+            <span className="count">{counts[f]}</span>
+          </button>
+        ))}
+      </div>
+      <label className="path-sort">
+        Sort
+        <select value={sort} onChange={(e) => onSort(e.target.value as PathSort)}>
+          {SORTS.map(([k, label]) => (
+            <option key={k} value={k}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {!list.length && <p className="rail-empty">{paths.length ? 'No paths here.' : 'No paths yet.'}</p>}
+      <ol className="tiles">
+        {list.map((x) => {
+          const total = x.steps.length
+          const finished = x.steps.filter((s) => done.has(s.node_id)).length
+          const status = statusOf(x, meta)
+          const timing = timingOf(x, meta)
+          return (
+            <li key={x.id} className="tile-wrap">
+              <button
+                className={`tile path-tile status-${status} ${selected === x.id ? 'active' : ''}`}
+                style={{ '--pc': x.color } as React.CSSProperties}
+                onClick={() => onSelect(x.id)}
+              >
+                <span className="tile-top">
+                  <span className="path-dot" />
+                  <span className="tile-num">
+                    {status === 'scheduled' ? `${TIMING_LABEL[timing]}${timing === 'date' && x.due ? ` ${fmtDate(x.due)}` : ''}` : STATUS_LABEL[status]}
+                  </span>
+                </span>
+                <span className="tile-title">{x.title}</span>
+                <span className="path-progress" aria-label={`${finished} of ${total} done`}>
+                  <i style={{ width: total ? `${(finished / total) * 100}%` : 0 }} />
+                </span>
+                <span className="tile-sum">
+                  {finished}/{total} · {hours(left(x))} left
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
+  )
+}
+
+/**
+ * Paths mode, right side: the open path (or the AI drafter). With the left panel tucked
+ * away (narrow windows) and nothing open, the list shows here instead.
+ */
+export function Paths(p: Props) {
+  const { paths, nodes, selected } = p
+  const path = paths.find((x) => x.id === selected)
   // make sure every step's chain (course code, titles) is loaded
   const stepIds = paths.flatMap((x) => x.steps.map((s) => s.node_id))
   const missing = stepIds.filter((id) => !nodes[id] || chainIds(id, nodes).some((c) => !nodes[c])).join(',')
@@ -90,102 +168,23 @@ export function Paths(p: Props) {
   useEffect(() => {
     if (missing) void load.current(missing.split(','))
   }, [missing])
-  // columns that don't fit fold into strips (tap one to open it again)
-  const [keep, setKeep] = useState(-1)
-  useEffect(() => setKeep(-1), [selected])
-  const drafting = selected === 'new'
-  const { ref: colsRef, folded } = useFit(drafting || path ? [300, 340] : [300], keep, p.panelWidth)
 
   return (
     <main className="explore paths-view">
-      {p.subnav}
-      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
-        {folded[0] ? (
-          <Strip kicker="Paths" picked={drafting ? 'New path' : path?.title} onOpen={() => setKeep(0)} />
+      <div className="columns">
+        {selected === 'new' ? (
+          <Drafter {...p} onCancel={() => p.onSelect('')} />
+        ) : path ? (
+          <PathPanel key={path.id} {...p} path={path} />
         ) : (
-          <section className="column">
-            <header className="column-head">
-              <span className="column-kicker">Paths</span>
-              <h2>Learn exactly what you need</h2>
-            </header>
-            <div className="path-new">
-              <button className={`btn-neon ${drafting ? 'on' : ''}`} onClick={() => onSelect('new')}>
-                ✦ New path with AI
-              </button>
-              <button
-                className="btn-ghost"
-                onClick={async () => {
-                  const made = await p.onSave(blankPath(paths.length))
-                  onSelect(made.id)
-                }}
-              >
-                + Empty path
-              </button>
+          <div className="lib-empty">
+            <h2>Pick a path</h2>
+            <p>Every path is on the left: filter by scheduled, not scheduled or archived, and sort them. Or make a new one.</p>
+            <div className="narrow-only">
+              <PathList {...p} />
             </div>
-            <div className="path-filter" role="tablist" aria-label="Show">
-              {(['all', 'scheduled', 'unscheduled', 'archived'] as Filter[]).map((f) => (
-                <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => onFilter(f)}>
-                  {f === 'all' ? 'All' : f === 'scheduled' ? 'Scheduled' : f === 'unscheduled' ? 'Not scheduled' : 'Archived'}{' '}
-                  <span className="count">{counts[f]}</span>
-                </button>
-              ))}
-            </div>
-            <label className="path-sort">
-              Sort
-              <select value={sort} onChange={(e) => onSort(e.target.value as PathSort)}>
-                {SORTS.map(([k, label]) => (
-                  <option key={k} value={k}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {!list.length && (
-              <p className="sheet-note">
-                {paths.length
-                  ? 'No paths here.'
-                  : 'No paths yet. Describe a goal and the AI lays out the course for it, or start an empty one and add chapters from the Library.'}
-              </p>
-            )}
-            <ol className="tiles">
-              {list.map((x) => {
-                const total = x.steps.length
-                const finished = x.steps.filter((s) => done.has(s.node_id)).length
-                const o = p.outlook.find((y) => y.pathId === x.id)
-                const status = statusOf(x, meta)
-                const timing = timingOf(x, meta)
-                return (
-                  <li key={x.id} className="tile-wrap">
-                    <button
-                      className={`tile path-tile status-${status} ${selected === x.id ? 'active' : ''}`}
-                      style={{ '--pc': x.color } as React.CSSProperties}
-                      onClick={() => onSelect(x.id)}
-                    >
-                      <span className="tile-top">
-                        <span className="path-dot" />
-                        <span className="tile-num">
-                          {status === 'scheduled'
-                            ? `${o?.pressing ? '🔥 Pressing' : TIMING_LABEL[timing]}${timing === 'date' && x.due ? ` ${fmtDate(x.due)}` : ''}`
-                            : STATUS_LABEL[status]}
-                        </span>
-                      </span>
-                      <span className="tile-title">{x.title}</span>
-                      <span className="path-progress" aria-label={`${finished} of ${total} done`}>
-                        <i style={{ width: total ? `${(finished / total) * 100}%` : 0 }} />
-                      </span>
-                      <span className="tile-sum">
-                        {finished}/{total} chapters · {hours(left(x))} left
-                        {status === 'scheduled' && o?.finish ? ` · done ${fmtDate(o.finish)}` : ''}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ol>
-          </section>
+          </div>
         )}
-
-        {drafting ? <Drafter {...p} onCancel={() => onSelect('')} /> : path ? <PathPanel key={path.id} {...p} path={path} /> : null}
       </div>
     </main>
   )
@@ -212,7 +211,6 @@ function PathPanel(p: Props & { path: Path }) {
     save({ archived: false })
   }
   const o = p.outlook.find((y) => y.pathId === path.id)
-  const pressedByHand = !!p.meta[path.id]?.pressing
   const move = (i: number, by: -1 | 1) => {
     const steps = [...path.steps]
     const j = i + by
@@ -265,25 +263,17 @@ function PathPanel(p: Props & { path: Path }) {
                 <input type="date" value={path.due ?? ''} onChange={(e) => save({ due: e.target.value || null })} />
               </label>
             )}
-            <button
-              className={`pressing-btn ${o?.pressing ? 'on' : ''}`}
-              onClick={() => p.onMeta(path.id, { pressing: !pressedByHand })}
-              aria-pressed={pressedByHand}
-              title="Pressing paths get the earliest free time and push the rest back"
-            >
-              🔥 {pressedByHand ? 'Pressing' : o?.promoted ? 'Pressing (auto)' : 'Mark pressing'}
-            </button>
             <p className={`path-outlook ${o?.late ? 'late' : ''}`}>
               {!o
                 ? ''
                 : o.unplaced && !o.finish
                   ? 'Not planned yet: set when you’re free (left panel).'
                   : o.unplaced
-                    ? `${hours(o.unplaced)} doesn’t fit yet. Open Schedule → Make it fit.`
+                    ? `${hours(o.unplaced)} doesn’t fit yet. See Cal.`
                     : o.late
-                      ? `Planned to finish ${fmtDate(o.finish)}, after it’s due. Open Schedule → Make it fit.`
+                      ? `Planned to finish ${fmtDate(o.finish)}, after it’s due. See Cal to reorder or make it fit.`
                       : o.finish
-                        ? `Planned to finish ${fmtDate(o.finish)}${o.promoted ? ' (moved ahead so it makes its date)' : ''}.`
+                        ? `Planned to finish ${fmtDate(o.finish)}.`
                         : 'All done.'}
             </p>
             {timing === 'date' && !path.due && <p className="path-outlook late">Pick the due date.</p>}

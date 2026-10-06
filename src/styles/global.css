@@ -2810,16 +2810,6 @@ mark.hl-active {
 .library {
   font-size: calc(15px * var(--fs, 1));
 }
-.text-size {
-  width: auto;
-  min-width: 44px;
-  padding: 0 10px;
-  border-radius: 999px;
-  font-size: 15px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  white-space: nowrap;
-}
 
 /* Panel width switch (top bar): Slim / Compact / Wide pictures */
 .pw-switch {
@@ -3319,4 +3309,52 @@ mark.hl-active {
   justify-content: space-between;
   align-items: center;
   padding: 6px 4px;
+}
+
+/* folded columns in Library / Paths / Schedule (same strips as Explore) */
+.columns > .column.strip,
+.lib-cols > .column.strip {
+  flex: 0 0 48px;
+}
+.paths-view .columns .path-panel,
+.paths-view .columns .path-drafter,
+.schedule-view .columns .day-panel,
+.lib-cols .lib-items {
+  flex: 1 1 440px;
+  min-width: min(300px, 100%);
+}
+
+/* text size picker (Settings) */
+.setting-row {
+  display: grid;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 14px;
+  color: var(--text-dim);
+}
+.text-size-pick {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.text-size-pick button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 8px 4px;
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  font-weight: 700;
+}
+.text-size-pick button small {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+.text-size-pick button.on {
+  border-color: var(--neon);
+  background: var(--neon-soft);
+  color: var(--neon);
 }

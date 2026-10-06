@@ -24,7 +24,9 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
 - **Explore | Library** toggle in the top bar. In Library mode the left panel swaps the subject
-  list for **Library · Paths · Schedule**, and each opens out in columns like Explore.
+  list for **Library · Paths · Schedule**, and each opens out in columns like Explore. In a
+  smaller window the oldest columns fold into slim strips (tap one to open it), so nothing
+  scrolls sideways.
 - **Library** browses like Explore: subject → branch → course → chapter columns (only where
   you've saved something, with counts), then that chapter's highlights, lectures and star.
   Search, type and colour filters still apply; **Sort → By colour** groups highlights by bucket.
@@ -43,6 +45,7 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   It re-plans itself whenever you tick something off, fall behind or change availability, and
   warns when a path won't finish by its due date. Google Calendar can replace manual
   availability later.
+- **Text size** A / A+ / A++ lives in Settings (this device).
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
 - **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.

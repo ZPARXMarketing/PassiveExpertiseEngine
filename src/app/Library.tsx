@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LectureControl } from './Study.tsx'
 import { chainIds, lectureTitle, type Bucket, type Extra, type LectureBody, type Path, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 import { colorOf } from './highlight.ts'
+import { Strip, useFit } from './fit.tsx'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 type Sort = 'catalog' | 'recent' | 'az' | 'bucket'
@@ -407,11 +408,16 @@ function Browse({
   const chapter = chapters.find((x) => x.node.id === sel[3])
   const pick = (depth: number, id: string) => setSel([...[subject, branch, course].slice(0, depth).map((g) => g?.node.id ?? ''), id])
 
-  const colsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = colsRef.current
-    if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
-  }, [sel])
+  // columns that don't fit fold into strips, oldest first (tap one to open it again)
+  const [keep, setKeep] = useState(-1)
+  useEffect(() => setKeep(-1), [sel])
+  const shown = [true, !!subject, !!branch, !!course, !!chapter].filter(Boolean).length
+  const { ref: colsRef, folded } = useFit(
+    Array.from({ length: shown }, (_, i) => (i === 4 ? 300 : 250)),
+    keep,
+  )
+  const strip = (i: number, kicker: string, picked?: string) =>
+    folded[i] ? <Strip key={`strip-${i}`} kicker={kicker} picked={picked} onOpen={() => setKeep(i)} /> : null
 
   const count = (n: number) => <span className="count">{n}</span>
   const branchCount = (b: BranchGroup) => [...b.courses.values()].reduce((t, c) => t + courseCount(c), 0)
@@ -421,6 +427,7 @@ function Browse({
 
   return (
     <div className="lib-cols" ref={colsRef}>
+      {strip(0, 'Subjects', subject?.node.title) ?? (
       <section className="column">
         <header className="column-head">
           <span className="column-kicker">Subjects</span>
@@ -437,8 +444,9 @@ function Browse({
           ))}
         </ol>
       </section>
+      )}
 
-      {subject && (
+      {subject && (strip(1, subject.node.title, branch?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Branches</span>
@@ -456,9 +464,9 @@ function Browse({
             ))}
           </ol>
         </section>
-      )}
+      ))}
 
-      {branch && (
+      {branch && (strip(2, branch.node.title, course?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Courses</span>
@@ -480,9 +488,9 @@ function Browse({
             ))}
           </ol>
         </section>
-      )}
+      ))}
 
-      {course && (
+      {course && (strip(3, course.node.meta.code || course.node.title, chapter?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">{course.node.meta.code || 'Course'}</span>
@@ -519,7 +527,7 @@ function Browse({
             ))}
           </ol>
         </section>
-      )}
+      ))}
 
       {chapter && (
         <section className="column lib-items">

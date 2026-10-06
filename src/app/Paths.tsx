@@ -4,6 +4,7 @@ import { parsePathPlan, type PathPlan } from './parse.ts'
 import { MAX_ATTACHMENT, type Attachment } from './prompts.ts'
 import type { NewPath, Store } from './store.ts'
 import { bestMatch, buildPath, inventory, type BuildResult } from './tree.ts'
+import { Strip, useFit } from './fit.tsx'
 import { chainIds, type Path, type PathStep, type TreeNode } from './types.ts'
 
 export const PATH_COLORS = ['#2affa3', '#4cc9ff', '#a78bff', '#ff5caa', '#ffd60a', '#ff8a3d']
@@ -42,15 +43,18 @@ export function Paths(p: Props) {
   useEffect(() => {
     if (missing) void load.current(missing.split(','))
   }, [missing])
-  const colsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = colsRef.current
-    if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
-  }, [selected])
+  // the path list folds into a strip when both columns don't fit (tap it to open again)
+  const [keep, setKeep] = useState(-1)
+  useEffect(() => setKeep(-1), [selected])
+  const open = selected === 'new' || !!path
+  const { ref: colsRef, folded } = useFit(open ? [300, 340] : [300], keep)
 
   return (
     <main className="explore paths-view">
       <div className="columns" ref={colsRef}>
+        {folded[0] ? (
+          <Strip kicker="Paths" picked={selected === 'new' ? 'New path' : path?.title} onOpen={() => setKeep(0)} />
+        ) : (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Paths</span>
@@ -114,6 +118,7 @@ export function Paths(p: Props) {
             </details>
           )}
         </section>
+        )}
 
         {selected === 'new' ? (
           <Drafter {...p} onCancel={() => onSelect('')} />

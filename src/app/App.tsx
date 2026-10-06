@@ -40,7 +40,7 @@ import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 import { Usage } from './Usage.tsx'
-import { TextSizeButton } from './TextSize.tsx'
+import { applyTextSize } from './TextSize.tsx'
 import { PanelWidthSwitch, type PanelWidth } from './PanelWidth.tsx'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
@@ -172,6 +172,8 @@ export default function App() {
   /** bumped by every navigation, so a slow subject lookup can't override a newer tap */
   const navSeq = useRef(0)
   const columnsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(applyTextSize, [])
 
   useEffect(() => {
     openStore().then(async (s) => {
@@ -823,7 +825,6 @@ export default function App() {
             </button>
           </nav>
           {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
-          <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>

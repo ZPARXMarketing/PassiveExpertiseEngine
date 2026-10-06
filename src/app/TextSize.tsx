@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
 /** Reading text size, per device. Step 0 is the original (smallest) size. */
 const STEPS = [
@@ -17,26 +17,33 @@ function stored(): number {
   }
 }
 
-export function TextSizeButton({ className }: { className: string }) {
+function apply(step: number) {
+  document.documentElement.style.setProperty('--fs', String(STEPS[step].scale))
+}
+
+/** Put this device's saved size in place (call once at start). */
+export const applyTextSize = () => apply(stored())
+
+/** A / A+ / A++ picker for Settings; takes effect at once. */
+export function TextSizeSetting() {
   const [step, setStep] = useState(stored)
-  useEffect(() => {
-    document.documentElement.style.setProperty('--fs', String(STEPS[step].scale))
+  const choose = (n: number) => {
+    setStep(n)
+    apply(n)
     try {
-      localStorage.setItem(KEY, String(step))
+      localStorage.setItem(KEY, String(n))
     } catch {
       /* private mode: the size still applies this visit */
     }
-  }, [step])
-  const next = (step + 1) % STEPS.length
+  }
   return (
-    <button
-      type="button"
-      className={`${className} text-size`}
-      onClick={() => setStep(next)}
-      title={`Text size: ${STEPS[step].name} (tap for ${STEPS[next].name})`}
-      aria-label={`Text size ${STEPS[step].name}`}
-    >
-      {STEPS[step].label}
-    </button>
+    <div className="text-size-pick" role="radiogroup" aria-label="Text size">
+      {STEPS.map((s, i) => (
+        <button key={s.label} type="button" role="radio" aria-checked={step === i} className={step === i ? 'on' : ''} onClick={() => choose(i)}>
+          <span style={{ fontSize: `${14 * s.scale}px` }}>{s.label}</span>
+          <small>{s.name}</small>
+        </button>
+      ))}
+    </div>
   )
 }

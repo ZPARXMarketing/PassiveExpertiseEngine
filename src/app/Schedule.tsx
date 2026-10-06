@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Strip, useFit } from './fit.tsx'
 import { generate, type Settings } from './generate.ts'
 import { parseAvailability } from './parse.ts'
 import { hours } from './Paths.tsx'
@@ -36,12 +37,9 @@ export function Schedule(p: Props) {
   const [day, setDay] = useState('')
   const [editing, setEditing] = useState(false)
   const today = dateKey(new Date())
-  // like Explore: the newest column slides into view
-  const colsRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    const el = colsRef.current
-    if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
-  }, [view, month, day])
+  // like Explore: columns that don't fit fold into strips, oldest first (tap one to open it)
+  const [keep, setKeep] = useState(-1)
+  useEffect(() => setKeep(-1), [view, month, day])
 
   const { sessions, outlook } = useMemo(() => planSchedule(paths, done, availability), [paths, done, availability])
   const byDate = useMemo(() => {
@@ -53,6 +51,12 @@ export function Schedule(p: Props) {
   const live = paths.filter((x) => !x.archived && x.steps.length)
   const sum = (list: Session[]) => hours(list.reduce((t, s) => t + s.minutes, 0))
   const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
+  const hasDays = !!live.length && !noTime
+  const widths = [250, ...(hasDays ? [250] : []), ...(hasDays && view === 'year' && month ? [250] : []), ...(day ? [300] : [])]
+  const { ref: colsRef, folded } = useFit(widths, keep)
+  const viewName = view === 'week' ? 'Week' : view === 'month' ? 'Month' : 'Year'
+  const dayName = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  const monthName = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })
 
   /** the dates the middle column lists */
   const range = (from: Date, n: number) => Array.from({ length: n }, (_, i) => dateKey(addDays(from, i)))
@@ -124,6 +128,9 @@ export function Schedule(p: Props) {
   return (
     <main className="explore schedule-view">
       <div className="columns" ref={colsRef}>
+        {folded[0] ? (
+          <Strip kicker="Schedule" picked={viewName} onOpen={() => setKeep(0)} />
+        ) : (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Schedule</span>
@@ -189,8 +196,16 @@ export function Schedule(p: Props) {
             </ul>
           )}
         </section>
+        )}
 
-        {!!live.length && !noTime && (
+        {hasDays && folded[1] && (
+          <Strip
+            kicker={periodTitle}
+            picked={view === 'year' ? (month ? monthName(month) : undefined) : day ? dayName(day) : undefined}
+            onOpen={() => setKeep(1)}
+          />
+        )}
+        {hasDays && !folded[1] && (
           <section className="column">
             <header className="column-head">
               <span className="column-kicker">{view === 'week' ? 'Days' : view === 'month' ? 'Days' : 'Months'}</span>
@@ -237,7 +252,10 @@ export function Schedule(p: Props) {
           </section>
         )}
 
-        {view === 'year' && month && (
+        {hasDays && view === 'year' && month && folded[2] && (
+          <Strip kicker={monthName(month)} picked={day ? dayName(day) : undefined} onOpen={() => setKeep(2)} />
+        )}
+        {hasDays && view === 'year' && month && !folded[2] && (
           <section className="column">
             <header className="column-head">
               <span className="column-kicker">Days</span>

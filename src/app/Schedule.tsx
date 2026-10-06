@@ -176,7 +176,7 @@ export function Schedule(p: Props) {
               </button>
             </div>
           )}
-          {outlook.some((o) => o.finish || o.unplaced) && (
+          {!noTime && outlook.some((o) => o.finish || o.unplaced) && (
             <ul className="outlook">
               {outlook.map((o) => {
                 const x = pathOf(o.pathId)
@@ -187,7 +187,9 @@ export function Schedule(p: Props) {
                     <span>
                       <b>{x.title}</b>
                       {o.unplaced
-                        ? ` — ${hours(o.unplaced)} doesn't fit before ${x.due ? 'the due date' : 'the next 6 months'}. Add free time or trim steps.`
+                        ? o.finish
+                          ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}. Add free time or trim steps.`
+                          : ` — none of it fits your free time yet. Add more free time.`
                         : o.late
                           ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}. Add free time or move the date.`
                           : ` — on track, done ${fmt(o.finish)}${x.due ? ` (due ${fmt(x.due)})` : ''}.`}

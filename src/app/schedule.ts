@@ -30,7 +30,9 @@ export interface PathOutlook {
 
 /** smallest piece worth scheduling when a step has to be split */
 const MIN_PIECE = 20
-const HORIZON_DAYS = 180
+/** plan at least this far ahead, and always past the latest due date (up to two years) */
+const MIN_DAYS = 180
+const MAX_DAYS = 730
 
 export const dateKey = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -69,7 +71,10 @@ export function planSchedule(
   const startMin = now.getHours() * 60 + now.getMinutes()
   const day = new Date(now.getFullYear(), now.getMonth(), now.getDate())
 
-  for (let i = 0; i < HORIZON_DAYS && queues.some((q) => q.steps.length); i++, day.setDate(day.getDate() + 1)) {
+  const lastDue = live.reduce((m, p) => (p.due && p.due > m ? p.due : m), '')
+  const toDue = lastDue ? Math.ceil((new Date(`${lastDue}T12:00:00`).getTime() - day.getTime()) / 86_400_000) + 1 : 0
+  const horizon = Math.min(MAX_DAYS, Math.max(MIN_DAYS, toDue + 60))
+  for (let i = 0; i < horizon && queues.some((q) => q.steps.length); i++, day.setDate(day.getDate() + 1)) {
     const key = dateKey(day)
     for (const b of blocksOn(day, avail)) {
       let at = Math.max(toMin(b.start), i === 0 ? Math.ceil(startMin / 5) * 5 : 0)

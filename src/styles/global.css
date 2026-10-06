@@ -2589,6 +2589,8 @@ mark.hl-active {
   position: sticky;
   top: 44px;
   z-index: 5;
+  /* it sits in the reader's flex column; without this a long chapter squashes it to nothing */
+  flex-shrink: 0;
   align-self: flex-end;
   margin-bottom: -48px;
   display: flex;

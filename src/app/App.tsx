@@ -687,7 +687,7 @@ export default function App() {
         : paths.find((x) => x.id === pathId)
     if (!target) throw new Error('That path is gone.')
     const fresh = ids.filter((id) => !target.steps.some((st) => st.node_id === id))
-    await savePath({ ...target, steps: [...target.steps, ...fresh.map((id) => ({ node_id: id, note: '', minutes: 45 }))] })
+    await savePath({ ...target, steps: [...target.steps, ...fresh.map((id) => ({ node_id: id, note: '', minutes: 30 }))] })
     return target.title
   }
 

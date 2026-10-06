@@ -275,7 +275,7 @@ export function parsePathPlan(text: string, complete = true): PathPlan {
         code: p[2].slice(0, 30),
         course: p[3].slice(0, 200),
         chapter: p[4].slice(0, 200),
-        minutes: minutes >= 5 && minutes <= 600 ? minutes : 45,
+        minutes: minutes >= 5 && minutes <= 600 ? minutes : 30,
         note: p.slice(6).join(' | ').slice(0, 600),
       })
     }

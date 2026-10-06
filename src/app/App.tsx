@@ -13,7 +13,7 @@ import {
   type RawItem,
 } from './parse.ts'
 import { openStore, type NewPath, type Store } from './store.ts'
-import { Paths, PATH_COLORS, hours, type Group } from './Paths.tsx'
+import { Paths, PATH_COLORS, hours, type Filter, type PathSort } from './Paths.tsx'
 import { AvailabilityEditor, Schedule } from './Schedule.tsx'
 import { EMPTY_AVAILABILITY, planSchedule, weeklyMinutes, type PathMeta, type Timing } from './schedule.ts'
 import { childrenOrGenerate } from './tree.ts'
@@ -130,7 +130,8 @@ export default function App() {
   /** Library mode: the subject picked in the left panel */
   const [libSubject, setLibSubject] = useState('')
   /** Paths: which list is open, and each path's timing / pressing (synced pref) */
-  const [pathGroup, setPathGroup] = useState<Group>('scheduled')
+  const [pathFilter, setPathFilter] = useState<Filter>('all')
+  const [pathSort, setPathSort] = useState<PathSort>('new')
   const [pathMeta, setPathMeta] = useState<PathMeta>({})
   const [editingFree, setEditingFree] = useState(false)
   const [paths, setPaths] = useState<Path[]>([])
@@ -627,6 +628,20 @@ export default function App() {
     return m
   }, [saved, lectures, known])
 
+  /** narrow windows: the left panel is tucked away, so Paths mode gets a small switch on top */
+  const subnav = (
+    <div className="mode-sub" role="tablist" aria-label="Paths or Schedule">
+      {(['paths', 'schedule'] as const).map((k) => (
+        <button key={k} role="tab" aria-selected={tab === k} className={tab === k ? 'on' : ''} onClick={() => setTab(k)}>
+          {k === 'paths' ? '🧭 Paths' : '🗓 Schedule'}
+        </button>
+      ))}
+      <button className="mode-sub-free" onClick={() => setEditingFree(true)}>
+        🕒
+      </button>
+    </div>
+  )
+
   const railSubjects = tab === 'library' ? sortedSubjects.filter((x) => savedSubjects.has(x.id)) : sortedSubjects
 
   const chooseRailSort = (next: 'az' | 'new' | 'custom') => {
@@ -713,7 +728,7 @@ export default function App() {
     return target.title
   }
 
-  const saveMeta = (id: string, fields: { timing?: Timing; pressing?: boolean }) =>
+  const saveMeta = (id: string, fields: { timing?: Timing; pressing?: boolean; shelved?: boolean }) =>
     setPathMeta((m) => {
       const next = { ...m, [id]: { ...m[id], ...fields } }
       void store?.setPref('pathMeta', next).catch(() => {})
@@ -1032,6 +1047,8 @@ export default function App() {
             onAddToPath={addToPath}
             panelWidth={panelWidth}
             subjectId={libSubject}
+            savedSubjects={railSubjects.map((x) => ({ id: x.id, title: x.title, count: savedSubjects.get(x.id) ?? 0 }))}
+            onPickSubject={setLibSubject}
           />
         )}
 
@@ -1053,12 +1070,15 @@ export default function App() {
             }}
             selected={pathSel}
             onSelect={setPathSel}
-            group={pathGroup}
-            onGroup={setPathGroup}
+            filter={pathFilter}
+            onFilter={setPathFilter}
+            sort={pathSort}
+            onSort={setPathSort}
             meta={pathMeta}
             onMeta={saveMeta}
             outlook={plan.outlook}
             panelWidth={panelWidth}
+            subnav={subnav}
           />
         )}
 
@@ -1079,6 +1099,7 @@ export default function App() {
             onMeta={saveMeta}
             onSave={savePath}
             onEditFree={() => setEditingFree(true)}
+            subnav={subnav}
           />
         )}
 

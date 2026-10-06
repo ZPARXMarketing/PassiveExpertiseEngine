@@ -53,6 +53,9 @@ interface Props {
   panelWidth: PanelWidth
   /** subject picked in the left panel */
   subjectId: string
+  /** saved subjects (same order as the left panel), for narrow windows where that panel is tucked away */
+  savedSubjects: { id: string; title: string; count: number }[]
+  onPickSubject: (id: string) => void
 }
 
 interface ChapterGroup {
@@ -100,7 +103,7 @@ const SORTS: [Sort, string][] = [
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth, subjectId }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth, subjectId, savedSubjects, onPickSubject }: Props) {
   const initial = useMemo(loadView, [])
   const [filter, setFilter] = useState<Filter>(initial.filter)
   const [query, setQuery] = useState(initial.query)
@@ -282,6 +285,34 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
             ))}
           </div>
         )}
+        {/* smaller windows: the two chip rows become two dropdowns on the same line */}
+        <div className="lib-compact">
+          <select value={subjectId} onChange={(e) => onPickSubject(e.target.value)} aria-label="Subject">
+            <option value="">Subject…</option>
+            {savedSubjects.map((x) => (
+              <option key={x.id} value={x.id}>
+                {x.title} ({x.count})
+              </option>
+            ))}
+          </select>
+          <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Show">
+            {FILTERS.map(([key, label]) => (
+              <option key={key} value={key}>
+                {label} ({counts[key]})
+              </option>
+            ))}
+          </select>
+          {shownBuckets.length > 0 && perBucket.size > 0 && (
+            <select value={bucket} onChange={(e) => setBucket(e.target.value)} aria-label="Colour">
+              <option value="all">All colours</option>
+              {shownBuckets.map((b) => (
+                <option key={b.key} value={b.key}>
+                  {b.name} ({perBucket.get(b.key) ?? 0})
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <div className="lib-tools">
           <label className="lib-sort">
             Sort
@@ -372,6 +403,8 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
           onAddToPath={onAddToPath}
           panelWidth={panelWidth}
           subjectId={subjectId}
+          savedSubjects={savedSubjects}
+          onPickSubject={onPickSubject}
         />
       )}
     </section>
@@ -393,9 +426,13 @@ function Browse({
   onAddToPath,
   panelWidth,
   subjectId,
+  savedSubjects,
+  onPickSubject,
 }: {
   panelWidth: PanelWidth
   subjectId: string
+  savedSubjects: { id: string; title: string; count: number }[]
+  onPickSubject: (id: string) => void
   tree: SubjectGroup[]
   sel: string[]
   setSel: (s: string[]) => void
@@ -441,8 +478,19 @@ function Browse({
     <div className={`lib-cols pw-${panelWidth}`} ref={colsRef}>
       {!subject && (
         <div className="lib-empty">
-          <h2>Pick a subject on the left</h2>
+          <h2>Pick a subject</h2>
           <p>Only what you’ve saved is here: starred courses and chapters, highlights and lectures.</p>
+          <ol className="tiles lib-pick">
+            {savedSubjects.map((x) => (
+              <li key={x.id} className="tile-wrap">
+                <button className="tile" onClick={() => onPickSubject(x.id)}>
+                  <span className="tile-title lib-tile-row">
+                    {x.title} <span className="count">{x.count}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
         </div>
       )}
 

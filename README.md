@@ -30,22 +30,25 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
     or a whole course adds it to a path.
   - **Paths** mode: the left panel holds **Paths** and **Schedule**, plus a small
     **When I'm free** button.
-- **Paths** — **Scheduled** and **Archive**. New paths (AI-drafted or empty) land in the Archive
-  to look through; **📅 Schedule this path** puts one in the plan, **Move to Archive** takes it
-  out. ✦ **New path with AI**: describe the goal, optionally paste the assignment and attach
-  photos/PDFs; the planner (`google/gemini-3.8-flash`) drafts subject › branch › course › chapter
-  steps with study time; the preview marks each step "In your library" or new; **Create** reuses
-  matches and generates anything missing the way Explore does.
+- **Paths** — one list of every path, filtered **All / Scheduled / Not scheduled / Archived** and
+  sorted (newest, recently changed, A–Z, due soonest, least time left, most progress). New
+  paths (AI-drafted or empty) start *Not scheduled*; **📅 Schedule this path**, **Unschedule**,
+  **🗄 Archive** / **Restore**. ✦ **New path with AI**: describe the goal, optionally paste the
+  assignment and attach photos/PDFs; the planner (`google/gemini-3.8-flash`) drafts subject ›
+  branch › course › chapter steps with study time; **Create** reuses matches and generates
+  anything missing the way Explore does.
 - **Timing** per scheduled path: **ASAP**, **By a date** or **No rush** (no date needed), plus
   **🔥 Pressing**. Priority for the earliest free time: Pressing → ASAP → By a date (earliest
   first) → No rush. A dated path that would miss its date is promoted to Pressing automatically
   and pushes the others back; each path shows its planned finish.
-- **Schedule** — free time from plain words (AI → weekly blocks + busy days) or by hand. Columns:
-  Week / Month / Year → days with study planned → that day's sessions. Re-plans whenever you tick
-  something off, fall behind or change anything. When it doesn't fit: **Shorten evenly** (smallest
-  even cut, never under 15 min a chapter) or **✦ Make it fit with AI** (proposes shorter
-  chapters, drops, or a timing change, with reasons; you Apply or not). Timing / Pressing are
-  kept in the synced prefs (`pathMeta`).
+- **Schedule** — free time from plain words (AI → weekly blocks + busy days) or by hand. One
+  drill-down: **Years → Months → Days → Hours → Minutes**; the last column is a minute-by-minute
+  timeline of that hour (chapters in path colours, free gaps) with controls per chapter: study
+  time −5/+5, earlier/later in its path, done, open. Re-plans on every change. When it doesn't
+  fit: **Shorten evenly** (15-min floor) or **✦ Make it fit with AI** (proposed trims, drops or
+  timing changes you Apply or not). Timing / Pressing / Archived live in synced prefs (`pathMeta`).
+- **Narrow windows** (split view): the page never scrolls sideways; Library gets a Subject
+  dropdown, Paths mode a Paths | Schedule switch; older columns fold into strips.
 - **Text size** A / A+ / A++ lives in Settings (this device).
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.

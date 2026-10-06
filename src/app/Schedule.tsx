@@ -8,6 +8,8 @@ import {
   blocksOn,
   dateKey,
   freeMinutesUntil,
+  fromMin,
+  MIN_STEP,
   shrinkToFit,
   timingOf,
   toMin,
@@ -18,9 +20,8 @@ import {
   type Timing,
 } from './schedule.ts'
 import type { NewPath } from './store.ts'
-import { chainIds, type Availability, type FreeBlock, type Path, type TreeNode } from './types.ts'
+import type { Availability, FreeBlock, Path, TreeNode } from './types.ts'
 
-type View = 'week' | 'month' | 'year'
 const DAY = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 
 interface Props {
@@ -40,316 +41,264 @@ interface Props {
   onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
   onSave: (p: NewPath) => Promise<Path>
   onEditFree: () => void
+  /** Paths | Schedule switch shown when the left panel is tucked away (narrow windows) */
+  subnav?: React.ReactNode
 }
 
-const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
-const startOfWeek = (d: Date) => addDays(d, -d.getDay())
-
 /**
- * The study plan, opening out in columns like Explore: Week / Month / Year → the days with
- * study planned → that day's sessions (Year goes month → day → sessions). Re-plans itself
- * whenever you finish something, fall behind, or change when you're free.
+ * The study plan as one drill-down, like Explore: Years → Months → Days → Hours → Minutes
+ * (the sessions inside that hour, to tick off or open). Opens on this year and month.
+ * Re-plans itself whenever you finish something, fall behind, or change when you're free.
  */
 export function Schedule(p: Props) {
   const { paths, nodes, done, availability } = p
-  const [view, setView] = useState<View>('week')
-  const [anchor, setAnchor] = useState(() => new Date())
-  const [month, setMonth] = useState('')
+  const now = new Date()
+  const today = dateKey(now)
+  const [year, setYear] = useState(today.slice(0, 4))
+  const [month, setMonth] = useState(today.slice(0, 7))
   const [day, setDay] = useState('')
-  const today = dateKey(new Date())
+  const [hour, setHour] = useState('')
   // like Explore: columns that don't fit fold into strips, oldest first (tap one to open it)
   const [keep, setKeep] = useState(-1)
-  useEffect(() => setKeep(-1), [view, month, day])
+  useEffect(() => setKeep(-1), [year, month, day, hour])
 
   const { sessions, outlook } = p.plan
-  const byDate = useMemo(() => {
-    const m = new Map<string, Session[]>()
-    for (const s of sessions) m.set(s.date, [...(m.get(s.date) ?? []), s])
-    return m
-  }, [sessions])
   const pathOf = (id: string) => paths.find((x) => x.id === id)
   const live = paths.filter((x) => !x.archived && x.steps.length)
   const sum = (list: Session[]) => hours(list.reduce((t, s) => t + s.minutes, 0))
   const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
-  const hasDays = !!live.length && !noTime
-  const widths = [250, ...(hasDays ? [250] : []), ...(hasDays && view === 'year' && month ? [250] : []), ...(day ? [300] : [])]
-  const { ref: colsRef, folded } = useFit(widths, keep, p.panelWidth)
-  const viewName = view === 'week' ? 'Week' : view === 'month' ? 'Month' : 'Year'
-  const dayName = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
+  const hasPlan = !!live.length && !noTime
+
+  /** sessions grouped by a key prefix: "2026", "2026-10", "2026-10-06" */
+  const within = (prefix: string) => sessions.filter((s) => s.date.startsWith(prefix))
+  const years = [...new Set([today.slice(0, 4), ...sessions.map((s) => s.date.slice(0, 4))])].sort()
+  const months = [...new Set(within(year).map((s) => s.date.slice(0, 7)))].sort()
+  const days = [...new Set(within(month).map((s) => s.date))].sort()
+  const daySessions = day ? within(day) : []
+  /** the hours a session touches: a 19:45–20:30 session shows under 19:00 and 20:00 */
+  const hoursOf = (s: Session) => {
+    const out: string[] = []
+    for (let h = Math.floor(toMin(s.start) / 60); h * 60 < toMin(s.end); h++) out.push(String(h).padStart(2, '0'))
+    return out
+  }
+  const dayHours = [...new Set(daySessions.flatMap(hoursOf))].sort()
+  const hourSessions = hour ? daySessions.filter((s) => hoursOf(s).includes(hour)) : []
+
   const monthName = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })
+  const dayName = (k: string) =>
+    k === today ? 'Today' : new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
+  const hourName = (h: string) => new Date(`2000-01-01T${h}:00:00`).toLocaleTimeString(undefined, { hour: 'numeric' })
+  const dots = (list: Session[]) => (
+    <span className="month-dots">
+      {[...new Set(list.map((s) => s.pathId))].map((id) => (
+        <i key={id} style={{ background: pathOf(id)?.color }} />
+      ))}
+    </span>
+  )
+  const tile = (key: string, active: boolean, title: string, list: Session[], onClick: () => void, extra?: React.ReactNode) => (
+    <li key={key} className="tile-wrap">
+      <button className={`tile ${active ? 'active' : ''}`} onClick={onClick}>
+        <span className="tile-top">{dots(list)}</span>
+        <span className="tile-title">{title}</span>
+        <span className="tile-sum">{list.length ? `${list.length} session${list.length === 1 ? '' : 's'} · ${sum(list)}` : 'Nothing planned'}</span>
+        {extra}
+      </button>
+    </li>
+  )
 
-  /** the dates the middle column lists */
-  const range = (from: Date, n: number) => Array.from({ length: n }, (_, i) => dateKey(addDays(from, i)))
-  const weekDays = range(startOfWeek(anchor), 7)
-  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
-  const monthDays = range(monthStart, new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate())
-  const yearMonths = Array.from({ length: 12 }, (_, m) => dateKey(new Date(anchor.getFullYear(), m, 1)).slice(0, 7))
-  const daysOfMonth = (prefix: string) => {
-    const [y, m] = prefix.split('-').map(Number)
-    return range(new Date(y, m - 1, 1), new Date(y, m, 0).getDate())
+  const cols: { kicker: string; picked?: string; body: React.ReactNode; wide?: boolean }[] = []
+  if (hasPlan) {
+    cols.push({
+      kicker: 'Months',
+      picked: month.startsWith(year) ? monthName(month) : undefined,
+      body: (
+        <>
+          <header className="column-head">
+            <span className="column-kicker">Months</span>
+            <h2>{year}</h2>
+          </header>
+          {months.length ? (
+            <ol className="tiles">
+              {months.map((m) =>
+                tile(
+                  m,
+                  month === m,
+                  monthName(m),
+                  within(m),
+                  () => {
+                    setMonth(m)
+                    setDay('')
+                    setHour('')
+                  },
+                  live
+                    .filter((x) => timingOf(x, p.meta) === 'date' && x.due?.startsWith(m))
+                    .map((x) => (
+                      <span key={x.id} className="year-due" style={{ '--pc': x.color } as React.CSSProperties}>
+                        <i className="path-dot" /> {x.title} due {fmt(x.due!)}
+                      </span>
+                    )),
+                ),
+              )}
+            </ol>
+          ) : (
+            <p className="sheet-note">Nothing planned in {year}.</p>
+          )}
+        </>
+      ),
+    })
+    if (month.startsWith(year))
+      cols.push({
+        kicker: monthName(month),
+        picked: day ? dayName(day) : undefined,
+        body: (
+          <>
+            <header className="column-head">
+              <span className="column-kicker">Days</span>
+              <h2>
+                {monthName(month)} {year}
+              </h2>
+            </header>
+            {days.length ? (
+              <ol className="tiles">
+                {days.map((k) =>
+                  tile(k, day === k, dayName(k), within(k), () => {
+                    setDay(k)
+                    setHour('')
+                  }),
+                )}
+              </ol>
+            ) : (
+              <p className="sheet-note">Nothing planned this month.</p>
+            )}
+          </>
+        ),
+      })
+    if (day)
+      cols.push({
+        kicker: dayName(day),
+        picked: hour ? hourName(hour) : undefined,
+        body: (
+          <>
+            <header className="column-head">
+              <span className="column-kicker">Hours</span>
+              <h2>{dayName(day)}</h2>
+              <p className="column-desc">
+                Free {blocksOn(new Date(`${day}T12:00:00`), availability).map((b) => `${b.start}–${b.end}`).join(', ') || '—'} · {sum(daySessions)} planned
+              </p>
+            </header>
+            <ol className="tiles">
+              {dayHours.map((h) => {
+                const list = daySessions.filter((s) => hoursOf(s).includes(h))
+                return tile(h, hour === h, hourName(h), list, () => setHour(h))
+              })}
+            </ol>
+          </>
+        ),
+      })
+    if (day && hour)
+      cols.push({
+        kicker: hourName(hour),
+        wide: true,
+        picked: `${hourSessions.length} session${hourSessions.length === 1 ? '' : 's'}`,
+        body: (
+          <>
+            <header className="column-head">
+              <span className="column-kicker">Minutes · {sum(hourSessions)} planned</span>
+              <h2>
+                {dayName(day)}, {hourName(hour)}
+              </h2>
+            </header>
+            <HourBreakdown hour={hour} sessions={hourSessions} paths={paths} nodes={nodes} done={done} onSave={p.onSave} onOpen={p.onOpen} onToggleDone={p.onToggleDone} />
+          </>
+        ),
+      })
   }
-  const listed = (keys: string[]) => keys.filter((k) => byDate.has(k))
-
-  const chooseView = (v: View) => {
-    setView(v)
-    setAnchor(new Date())
-    setMonth('')
-    setDay('')
-  }
-  const shift = (dir: -1 | 1) => {
-    setDay('')
-    setMonth('')
-    setAnchor((a) =>
-      view === 'week' ? addDays(a, 7 * dir) : view === 'month' ? new Date(a.getFullYear(), a.getMonth() + dir, 1) : new Date(a.getFullYear() + dir, 0, 1),
-    )
-  }
-  const periodTitle =
-    view === 'week'
-      ? `Week of ${startOfWeek(anchor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
-      : view === 'month'
-        ? anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
-        : String(anchor.getFullYear())
-
-  const dayTiles = (keys: string[], depth: number) => {
-    const shown = listed(keys)
-    return shown.length ? (
-      <ol className="tiles">
-        {shown.map((k) => {
-          const list = byDate.get(k)!
-          const d = new Date(`${k}T12:00:00`)
-          return (
-            <li key={k} className="tile-wrap">
-              <button className={`tile ${day === k ? 'active' : ''} ${k === today ? 'today-tile' : ''}`} onClick={() => setDay(k)}>
-                <span className="tile-top">
-                  <span className="tile-num">{k === today ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}</span>
-                  <span className="month-dots">
-                    {[...new Set(list.map((s) => s.pathId))].map((id) => (
-                      <i key={id} style={{ background: pathOf(id)?.color }} />
-                    ))}
-                  </span>
-                </span>
-                <span className="tile-title">{d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</span>
-                <span className="tile-sum">
-                  {list.length} session{list.length === 1 ? '' : 's'} · {sum(list)}
-                </span>
-              </button>
-            </li>
-          )
-        })}
-      </ol>
-    ) : (
-      <p className="sheet-note">{depth ? 'Nothing planned that month.' : `Nothing planned ${view === 'week' ? 'this week' : 'this month'}.`}</p>
-    )
-  }
-
-  const dayList = day ? (byDate.get(day) ?? []) : []
-  const dayDate = day ? new Date(`${day}T12:00:00`) : null
+  const { ref: colsRef, folded } = useFit([250, ...cols.map((c) => (c.wide ? 300 : 250))], keep, p.panelWidth)
 
   return (
     <main className="explore schedule-view">
+      {p.subnav}
       <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
         {folded[0] ? (
-          <Strip kicker="Schedule" picked={viewName} onOpen={() => setKeep(0)} />
+          <Strip kicker="Years" picked={year} onOpen={() => setKeep(0)} />
         ) : (
-        <section className="column">
-          <header className="column-head">
-            <span className="column-kicker">Schedule</span>
-            <h2>Your study plan</h2>
-          </header>
-          <ol className="tiles">
-            {(['week', 'month', 'year'] as View[]).map((v) => {
-              const keys = v === 'week' ? range(startOfWeek(new Date()), 7) : v === 'month' ? range(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 31) : null
-              const list = keys ? keys.flatMap((k) => byDate.get(k) ?? []) : sessions.filter((x) => x.date.startsWith(String(new Date().getFullYear())))
-              return (
-                <li key={v} className="tile-wrap">
-                  <button className={`tile ${view === v ? 'active' : ''}`} onClick={() => chooseView(v)}>
-                    <span className="tile-title">{v === 'week' ? 'Week' : v === 'month' ? 'Month' : 'Year'}</span>
-                    <span className="tile-sum">
-                      {list.length ? `${list.length} sessions · ${sum(list)} ${v === 'week' ? 'this week' : v === 'month' ? 'this month' : 'this year'}` : 'Nothing planned yet'}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ol>
-          {!live.length && (
-            <div className="sched-hint">
-              <p className="sheet-note">Make a Path first: the schedule lays its chapters into your free time.</p>
-              <button className="btn-neon" onClick={p.onGoPaths}>
-                Go to Paths
-              </button>
-            </div>
-          )}
-          {!!live.length && noTime && (
-            <div className="sched-hint">
-              <p className="sheet-note">Tell it when you can study and your paths get planned into that time.</p>
-              <button className="btn-neon" onClick={p.onEditFree}>
-                Set my free time
-              </button>
-            </div>
-          )}
-          {!noTime && outlook.some((o) => o.finish || o.unplaced) && (
-            <ul className="outlook">
-              {outlook.map((o) => {
-                const x = pathOf(o.pathId)
-                if (!x || (!o.finish && !o.unplaced)) return null
-                return (
-                  <li key={o.pathId} className={o.late ? 'late' : ''} style={{ '--pc': x.color } as React.CSSProperties}>
-                    <i className="path-dot" />
-                    <span>
-                      <b>{x.title}</b>
-                      {o.pressing && ' 🔥'}
-                      {o.unplaced
-                        ? o.finish
-                          ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}.`
-                          : ` — none of it fits your free time yet.`
-                        : o.late
-                          ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}.`
-                          : ` — ${o.timing === 'none' ? 'no rush, ' : ''}done ${fmt(o.finish)}${o.timing === 'date' && x.due ? ` (due ${fmt(x.due)})` : ''}${o.promoted ? ', moved ahead to make its date' : ''}.`}
-                    </span>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-          {!noTime && outlook.some((o) => o.late || o.unplaced) && (
-            <FitBox paths={paths} done={done} availability={availability} meta={p.meta} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
-          )}
-        </section>
-        )}
-
-        {hasDays && folded[1] && (
-          <Strip
-            kicker={periodTitle}
-            picked={view === 'year' ? (month ? monthName(month) : undefined) : day ? dayName(day) : undefined}
-            onOpen={() => setKeep(1)}
-          />
-        )}
-        {hasDays && !folded[1] && (
           <section className="column">
             <header className="column-head">
-              <span className="column-kicker">{view === 'week' ? 'Days' : view === 'month' ? 'Days' : 'Months'}</span>
-              <div className="sched-nav">
-                <button className="icon-btn" onClick={() => shift(-1)} aria-label="Previous">
-                  ‹
-                </button>
-                <h2>{periodTitle}</h2>
-                <button className="icon-btn" onClick={() => shift(1)} aria-label="Next">
-                  ›
+              <span className="column-kicker">Schedule</span>
+              <h2>Your study plan</h2>
+            </header>
+            {hasPlan && (
+              <ol className="tiles">
+                {years.map((y) =>
+                  tile(y, year === y, y, within(y), () => {
+                    setYear(y)
+                    setMonth(y === today.slice(0, 4) ? today.slice(0, 7) : (within(y)[0]?.date.slice(0, 7) ?? `${y}-01`))
+                    setDay('')
+                    setHour('')
+                  }),
+                )}
+              </ol>
+            )}
+            {!live.length && (
+              <div className="sched-hint">
+                <p className="sheet-note">Schedule a path first: the plan lays its chapters into your free time.</p>
+                <button className="btn-neon" onClick={p.onGoPaths}>
+                  Go to Paths
                 </button>
               </div>
-            </header>
-            {view === 'week' && dayTiles(weekDays, 0)}
-            {view === 'month' && dayTiles(monthDays, 0)}
-            {view === 'year' && (
-              <ol className="tiles">
-                {yearMonths.map((m) => {
-                  const list = sessions.filter((x) => x.date.startsWith(m))
-                  const dues = live.filter((x) => x.due?.startsWith(m))
-                  if (!list.length && !dues.length) return null
+            )}
+            {!!live.length && noTime && (
+              <div className="sched-hint">
+                <p className="sheet-note">Tell it when you can study and your paths get planned into that time.</p>
+                <button className="btn-neon" onClick={p.onEditFree}>
+                  Set my free time
+                </button>
+              </div>
+            )}
+            {!noTime && outlook.some((o) => o.finish || o.unplaced) && (
+              <ul className="outlook">
+                {outlook.map((o) => {
+                  const x = pathOf(o.pathId)
+                  if (!x || (!o.finish && !o.unplaced)) return null
                   return (
-                    <li key={m} className="tile-wrap">
-                      <button
-                        className={`tile ${month === m ? 'active' : ''}`}
-                        onClick={() => {
-                          setMonth(m)
-                          setDay('')
-                        }}
-                      >
-                        <span className="tile-title">{new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })}</span>
-                        <span className="tile-sum">{list.length ? `${list.length} sessions · ${sum(list)}` : 'Nothing planned'}</span>
-                        {dues.map((x) => (
-                          <span key={x.id} className="year-due" style={{ '--pc': x.color } as React.CSSProperties}>
-                            <i className="path-dot" /> {x.title} due {fmt(x.due!)}
-                          </span>
-                        ))}
-                      </button>
+                    <li key={o.pathId} className={o.late ? 'late' : ''} style={{ '--pc': x.color } as React.CSSProperties}>
+                      <i className="path-dot" />
+                      <span>
+                        <b>{x.title}</b>
+                        {o.pressing && ' 🔥'}
+                        {o.unplaced
+                          ? o.finish
+                            ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}.`
+                            : ` — none of it fits your free time yet.`
+                          : o.late
+                            ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}.`
+                            : ` — ${o.timing === 'none' ? 'no rush, ' : ''}done ${fmt(o.finish)}${o.timing === 'date' && x.due ? ` (due ${fmt(x.due)})` : ''}${o.promoted ? ', moved ahead to make its date' : ''}.`}
+                      </span>
                     </li>
                   )
                 })}
-              </ol>
+              </ul>
+            )}
+            {!noTime && outlook.some((o) => o.late || o.unplaced) && (
+              <FitBox paths={paths} done={done} availability={availability} meta={p.meta} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
             )}
           </section>
         )}
-
-        {hasDays && view === 'year' && month && folded[2] && (
-          <Strip kicker={monthName(month)} picked={day ? dayName(day) : undefined} onOpen={() => setKeep(2)} />
-        )}
-        {hasDays && view === 'year' && month && !folded[2] && (
-          <section className="column">
-            <header className="column-head">
-              <span className="column-kicker">Days</span>
-              <h2>{new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h2>
-            </header>
-            {dayTiles(daysOfMonth(month), 1)}
-          </section>
-        )}
-
-        {day && dayDate && (
-          <section className="column day-panel">
-            <header className="column-head">
-              <span className="column-kicker">{day === today ? 'Today' : dayDate.toLocaleDateString(undefined, { weekday: 'long' })}</span>
-              <h2>{dayDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
-              <p className="column-desc">
-                Free {blocksOn(dayDate, availability).map((b) => `${b.start}–${b.end}`).join(', ') || '—'} · {sum(dayList)} planned
-              </p>
-            </header>
-            <div className="day-sessions">
-              {dayList.map((s, i) => (
-                <SessionCard key={i} s={s} path={pathOf(s.pathId)} nodes={nodes} done={done} onOpen={p.onOpen} onToggleDone={p.onToggleDone} />
-              ))}
-            </div>
-          </section>
+        {cols.map((c, i) =>
+          folded[i + 1] ? (
+            <Strip key={c.kicker + i} kicker={c.kicker} picked={c.picked} onOpen={() => setKeep(i + 1)} />
+          ) : (
+            <section key={c.kicker + i} className={`column ${c.wide ? 'day-panel' : ''}`}>
+              {c.body}
+            </section>
+          ),
         )}
       </div>
-
     </main>
   )
 }
 
 const fmt = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-
-function SessionCard({
-  s,
-  path,
-  nodes,
-  done,
-  onOpen,
-  onToggleDone,
-}: {
-  s: Session
-  path?: Path
-  nodes: Record<string, TreeNode>
-  done: Set<string>
-  onOpen: (id: string) => void
-  onToggleDone: (id: string) => void
-}) {
-  const node = nodes[s.nodeId]
-  const course = chainIds(s.nodeId, nodes)
-    .map((id) => nodes[id])
-    .find((n) => n?.level === 'course')
-  const isDone = done.has(s.nodeId)
-  return (
-    <div className={`session ${isDone ? 'done' : ''}`} style={{ '--pc': path?.color } as React.CSSProperties}>
-      <div className="session-top">
-        <span className="session-time">
-          {s.start}–{s.end}
-          {s.part && <em> · {s.part}</em>}
-        </span>
-        <button className={`step-check ${isDone ? 'on' : ''}`} onClick={() => onToggleDone(s.nodeId)} aria-label={isDone ? 'Mark not done' : 'Mark done'}>
-          {isDone ? '✓' : ''}
-        </button>
-      </div>
-      <button className="session-main" onClick={() => onOpen(s.nodeId)} title={path?.title}>
-        <span className="session-title">{node?.title ?? '…'}</span>
-        <span className="session-sub">
-          {course?.meta.code ? `${course.meta.code} · ` : ''}
-          {path?.title}
-        </span>
-      </button>
-    </div>
-  )
-}
 
 /** Say it in words (the AI turns it into blocks) or set blocks by hand. */
 export function AvailabilityEditor({
@@ -613,6 +562,145 @@ function FitBox({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * One hour, minute by minute: a timeline of what's planned (in each path's colour) and the
+ * free gaps, then a row per chapter to adjust it: shorter / longer, earlier / later in its
+ * path, done, or open to read. Any change re-plans everything at once.
+ */
+function HourBreakdown({
+  hour,
+  sessions,
+  paths,
+  nodes,
+  done,
+  onSave,
+  onOpen,
+  onToggleDone,
+}: {
+  hour: string
+  sessions: Session[]
+  paths: Path[]
+  nodes: Record<string, TreeNode>
+  done: Set<string>
+  onSave: (p: NewPath) => Promise<Path>
+  onOpen: (id: string) => void
+  onToggleDone: (id: string) => void
+}) {
+  const h0 = Number(hour) * 60
+  const PX = 6 // pixels per minute
+  // the part of each session inside this hour
+  const parts = sessions.map((s) => ({ s, from: Math.max(toMin(s.start), h0) - h0, to: Math.min(toMin(s.end), h0 + 60) - h0 }))
+  const gaps: { from: number; to: number }[] = []
+  let at = 0
+  for (const x of [...parts].sort((a, b) => a.from - b.from)) {
+    if (x.from > at) gaps.push({ from: at, to: x.from })
+    at = Math.max(at, x.to)
+  }
+  if (at < 60) gaps.push({ from: at, to: 60 })
+  const label = (m: number) => fromMin(h0 + m)
+
+  const stepOf = (s: Session) => {
+    const path = paths.find((x) => x.id === s.pathId)
+    const i = path ? path.steps.findIndex((x) => x.node_id === s.nodeId) : -1
+    return { path, i }
+  }
+  const setMinutes = (s: Session, by: number) => {
+    const { path, i } = stepOf(s)
+    if (!path || i < 0) return
+    const minutes = Math.max(MIN_STEP, Math.min(600, path.steps[i].minutes + by))
+    void onSave({ ...path, steps: path.steps.map((x, k) => (k === i ? { ...x, minutes } : x)) })
+  }
+  const move = (s: Session, by: -1 | 1) => {
+    const { path, i } = stepOf(s)
+    if (!path || i < 0) return
+    const j = i + by
+    if (j < 0 || j >= path.steps.length) return
+    const steps = [...path.steps]
+    ;[steps[i], steps[j]] = [steps[j], steps[i]]
+    void onSave({ ...path, steps })
+  }
+
+  return (
+    <div className="hour-breakdown">
+      <div className="hour-timeline" style={{ height: 60 * PX }}>
+        {[0, 15, 30, 45].map((m) => (
+          <span key={m} className="hour-tick" style={{ top: m * PX }}>
+            {label(m)}
+          </span>
+        ))}
+        {gaps.map((g) => (
+          <div key={`g${g.from}`} className="hour-gap" style={{ top: g.from * PX, height: (g.to - g.from) * PX }}>
+            {g.to - g.from >= 8 && <span>free · {g.to - g.from} min</span>}
+          </div>
+        ))}
+        {parts.map(({ s, from, to }, i) => {
+          const path = paths.find((x) => x.id === s.pathId)
+          return (
+            <div
+              key={i}
+              className={`hour-block ${done.has(s.nodeId) ? 'done' : ''}`}
+              style={{ top: from * PX, height: Math.max(18, (to - from) * PX - 2), '--pc': path?.color } as React.CSSProperties}
+            >
+              <b>{nodes[s.nodeId]?.title ?? '…'}</b>
+              <span>
+                {s.start}–{s.end}
+                {s.minutes !== to - from ? ` · ${to - from} of ${s.minutes} min this hour` : ` · ${s.minutes} min`}
+                {s.part ? ` · part ${s.part}` : ''}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      <ul className="hour-adjust">
+        {sessions.map((s, i) => {
+          const { path, i: k } = stepOf(s)
+          const step = path?.steps[k]
+          const isDone = done.has(s.nodeId)
+          return (
+            <li key={i} style={{ '--pc': path?.color } as React.CSSProperties}>
+              <div className="adj-head">
+                <i className="path-dot" />
+                <b>{nodes[s.nodeId]?.title ?? '…'}</b>
+                <span className="muted">{path?.title}</span>
+              </div>
+              <div className="adj-row">
+                <span className="adj-label">Study time</span>
+                <button onClick={() => setMinutes(s, -5)} disabled={!step || step.minutes <= MIN_STEP} aria-label="5 minutes shorter">
+                  −5
+                </button>
+                <span className="adj-val">{step ? hours(step.minutes) : '—'}</span>
+                <button onClick={() => setMinutes(s, 5)} aria-label="5 minutes longer">
+                  +5
+                </button>
+              </div>
+              <div className="adj-row">
+                <span className="adj-label">In its path</span>
+                <button onClick={() => move(s, -1)} disabled={k <= 0}>
+                  Earlier
+                </button>
+                <button onClick={() => move(s, 1)} disabled={!path || k >= path.steps.length - 1}>
+                  Later
+                </button>
+              </div>
+              <div className="adj-row">
+                <button className={`step-check ${isDone ? 'on' : ''}`} onClick={() => onToggleDone(s.nodeId)} aria-label={isDone ? 'Mark not done' : 'Mark done'}>
+                  {isDone ? '✓' : ''}
+                </button>
+                <span className="adj-label">{isDone ? 'Done' : 'Mark done'}</span>
+                <span className="grow" />
+                <button className="adj-open" onClick={() => onOpen(s.nodeId)}>
+                  Open chapter ›
+                </button>
+              </div>
+            </li>
+          )
+        })}
+      </ul>
     </div>
   )
 }

@@ -7,7 +7,7 @@ import { bestMatch, buildPath, inventory, type BuildResult } from './tree.ts'
 import { Strip, useFit } from './fit.tsx'
 import type { PanelWidth } from './PanelWidth.tsx'
 import { chainIds, type Path, type PathStep, type TreeNode } from './types.ts'
-import { timingOf, type PathMeta, type PathOutlook, type Timing } from './schedule.ts'
+import { statusOf, timingOf, type PathMeta, type PathOutlook, type PathStatus, type Timing } from './schedule.ts'
 
 export const PATH_COLORS = ['#2affa3', '#4cc9ff', '#a78bff', '#ff5caa', '#ffd60a', '#ff8a3d']
 /** all attachments together, as data: URLs (keeps one request well under the size limit) */
@@ -29,27 +29,58 @@ interface Props {
   /** which path is open (kept by the app so it survives switching views) */
   selected: string
   onSelect: (id: string) => void
-  /** which list is open: scheduled paths or the archive */
-  group: Group
-  onGroup: (g: Group) => void
+  /** list filter and sort (kept by the app) */
+  filter: Filter
+  onFilter: (f: Filter) => void
+  sort: PathSort
+  onSort: (s: PathSort) => void
   meta: PathMeta
-  onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
+  onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean; shelved?: boolean }) => void
   outlook: PathOutlook[]
   panelWidth: PanelWidth
+  /** Paths | Schedule switch shown when the left panel is tucked away (narrow windows) */
+  subnav?: React.ReactNode
 }
 
-export type Group = 'scheduled' | 'archive'
+export type Filter = 'all' | PathStatus
+export type PathSort = 'new' | 'updated' | 'az' | 'due' | 'left' | 'progress'
+const SORTS: [PathSort, string][] = [
+  ['new', 'Newest'],
+  ['updated', 'Recently changed'],
+  ['az', 'A–Z'],
+  ['due', 'Due soonest'],
+  ['left', 'Least time left'],
+  ['progress', 'Most progress'],
+]
+const STATUS_LABEL: Record<PathStatus, string> = { scheduled: '📅 Scheduled', unscheduled: 'Not scheduled', archived: '🗄 Archived' }
 
 /**
  * Paths: goal-specific sequences of chapters, drafted by the AI or put together by hand.
- * New ones land in the Archive to look through; "Schedule this path" puts one in the plan.
+ * One list of every path, filtered (scheduled / not scheduled / archived) and sorted.
+ * New ones start "not scheduled"; "Schedule this path" puts one in the plan.
  */
 export function Paths(p: Props) {
-  const { paths, nodes, done, selected, onSelect, group, onGroup } = p
-  const scheduled = paths.filter((x) => !x.archived)
-  const archive = paths.filter((x) => x.archived)
-  const list = group === 'scheduled' ? scheduled : archive
+  const { paths, nodes, done, selected, onSelect, filter, onFilter, sort, onSort, meta } = p
   const path = paths.find((x) => x.id === selected)
+  const counts = { all: paths.length, scheduled: 0, unscheduled: 0, archived: 0 }
+  for (const x of paths) counts[statusOf(x, meta)]++
+  const left = (x: Path) => x.steps.filter((s) => !done.has(s.node_id)).reduce((t, s) => t + s.minutes, 0)
+  const progress = (x: Path) => (x.steps.length ? x.steps.filter((s) => done.has(s.node_id)).length / x.steps.length : 0)
+  const list = paths
+    .filter((x) => filter === 'all' || statusOf(x, meta) === filter)
+    .sort((a, b) =>
+      sort === 'az'
+        ? a.title.localeCompare(b.title)
+        : sort === 'updated'
+          ? b.updated_at.localeCompare(a.updated_at)
+          : sort === 'due'
+            ? (a.due ?? '9999').localeCompare(b.due ?? '9999')
+            : sort === 'left'
+              ? left(a) - left(b)
+              : sort === 'progress'
+                ? progress(b) - progress(a)
+                : b.created_at.localeCompare(a.created_at),
+    )
 
   // make sure every step's chain (course code, titles) is loaded
   const stepIds = paths.flatMap((x) => x.steps.map((s) => s.node_id))
@@ -61,17 +92,16 @@ export function Paths(p: Props) {
   }, [missing])
   // columns that don't fit fold into strips (tap one to open it again)
   const [keep, setKeep] = useState(-1)
-  useEffect(() => setKeep(-1), [selected, group])
+  useEffect(() => setKeep(-1), [selected])
   const drafting = selected === 'new'
-  const widths = drafting ? [250, 340] : path ? [250, 280, 340] : [250, 280]
-  const { ref: colsRef, folded } = useFit(widths, keep, p.panelWidth)
-  const groupName = group === 'scheduled' ? 'Scheduled' : 'Archive'
+  const { ref: colsRef, folded } = useFit(drafting || path ? [300, 340] : [300], keep, p.panelWidth)
 
   return (
     <main className="explore paths-view">
+      {p.subnav}
       <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
         {folded[0] ? (
-          <Strip kicker="Paths" picked={drafting ? 'New path' : groupName} onOpen={() => setKeep(0)} />
+          <Strip kicker="Paths" picked={drafting ? 'New path' : path?.title} onOpen={() => setKeep(0)} />
         ) : (
           <section className="column">
             <header className="column-head">
@@ -86,54 +116,35 @@ export function Paths(p: Props) {
                 className="btn-ghost"
                 onClick={async () => {
                   const made = await p.onSave(blankPath(paths.length))
-                  onGroup('archive')
                   onSelect(made.id)
                 }}
               >
                 + Empty path
               </button>
             </div>
-            <ol className="tiles">
-              {(
-                [
-                  ['scheduled', '📅 Scheduled', scheduled, 'In your study plan'],
-                  ['archive', '🗄 Archive', archive, 'Saved to look through; schedule any time'],
-                ] as const
-              ).map(([g, label, items, sub]) => (
-                <li key={g} className="tile-wrap">
-                  <button
-                    className={`tile ${!drafting && group === g ? 'active' : ''}`}
-                    onClick={() => {
-                      onGroup(g)
-                      if (drafting || (path && path.archived !== (g === 'archive'))) onSelect('')
-                    }}
-                  >
-                    <span className="tile-title lib-tile-row">
-                      {label} <span className="count">{items.length}</span>
-                    </span>
-                    <span className="tile-sum">{sub}</span>
-                  </button>
-                </li>
+            <div className="path-filter" role="tablist" aria-label="Show">
+              {(['all', 'scheduled', 'unscheduled', 'archived'] as Filter[]).map((f) => (
+                <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => onFilter(f)}>
+                  {f === 'all' ? 'All' : f === 'scheduled' ? 'Scheduled' : f === 'unscheduled' ? 'Not scheduled' : 'Archived'}{' '}
+                  <span className="count">{counts[f]}</span>
+                </button>
               ))}
-            </ol>
-          </section>
-        )}
-
-        {drafting ? (
-          <Drafter {...p} onCancel={() => onSelect('')} />
-        ) : folded[1] ? (
-          <Strip kicker={groupName} picked={path?.title} onOpen={() => setKeep(1)} />
-        ) : (
-          <section className="column">
-            <header className="column-head">
-              <span className="column-kicker">{groupName}</span>
-              <h2>{list.length ? `${list.length} path${list.length === 1 ? '' : 's'}` : 'Nothing here yet'}</h2>
-            </header>
+            </div>
+            <label className="path-sort">
+              Sort
+              <select value={sort} onChange={(e) => onSort(e.target.value as PathSort)}>
+                {SORTS.map(([k, label]) => (
+                  <option key={k} value={k}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
             {!list.length && (
               <p className="sheet-note">
-                {group === 'scheduled'
-                  ? 'Open a path in the Archive and tap “Schedule this path” to put it in your plan.'
-                  : 'New paths land here. Make one with AI, or an empty one and add chapters from the Library.'}
+                {paths.length
+                  ? 'No paths here.'
+                  : 'No paths yet. Describe a goal and the AI lays out the course for it, or start an empty one and add chapters from the Library.'}
               </p>
             )}
             <ol className="tiles">
@@ -141,25 +152,30 @@ export function Paths(p: Props) {
                 const total = x.steps.length
                 const finished = x.steps.filter((s) => done.has(s.node_id)).length
                 const o = p.outlook.find((y) => y.pathId === x.id)
-                const timing = timingOf(x, p.meta)
+                const status = statusOf(x, meta)
+                const timing = timingOf(x, meta)
                 return (
                   <li key={x.id} className="tile-wrap">
                     <button
-                      className={`tile path-tile ${selected === x.id ? 'active' : ''}`}
+                      className={`tile path-tile status-${status} ${selected === x.id ? 'active' : ''}`}
                       style={{ '--pc': x.color } as React.CSSProperties}
                       onClick={() => onSelect(x.id)}
                     >
                       <span className="tile-top">
                         <span className="path-dot" />
-                        {!x.archived && <span className="tile-num">{o?.pressing ? '🔥 Pressing' : TIMING_LABEL[timing]}{timing === 'date' && x.due ? ` ${fmtDate(x.due)}` : ''}</span>}
+                        <span className="tile-num">
+                          {status === 'scheduled'
+                            ? `${o?.pressing ? '🔥 Pressing' : TIMING_LABEL[timing]}${timing === 'date' && x.due ? ` ${fmtDate(x.due)}` : ''}`
+                            : STATUS_LABEL[status]}
+                        </span>
                       </span>
                       <span className="tile-title">{x.title}</span>
                       <span className="path-progress" aria-label={`${finished} of ${total} done`}>
                         <i style={{ width: total ? `${(finished / total) * 100}%` : 0 }} />
                       </span>
                       <span className="tile-sum">
-                        {finished}/{total} chapters · {hours(x.steps.filter((s) => !done.has(s.node_id)).reduce((t, s) => t + s.minutes, 0))} left
-                        {o?.finish ? ` · done ${fmtDate(o.finish)}` : ''}
+                        {finished}/{total} chapters · {hours(left(x))} left
+                        {status === 'scheduled' && o?.finish ? ` · done ${fmtDate(o.finish)}` : ''}
                       </span>
                     </button>
                   </li>
@@ -169,7 +185,7 @@ export function Paths(p: Props) {
           </section>
         )}
 
-        {!drafting && path && <PathPanel key={path.id} {...p} path={path} />}
+        {drafting ? <Drafter {...p} onCancel={() => onSelect('')} /> : path ? <PathPanel key={path.id} {...p} path={path} /> : null}
       </div>
     </main>
   )
@@ -178,7 +194,7 @@ export function Paths(p: Props) {
 const TIMING_LABEL: Record<Timing, string> = { asap: 'ASAP', date: 'By', none: 'No rush' }
 
 function blankPath(n: number): NewPath {
-  // new paths start in the Archive: look first, schedule when ready
+  // new paths start "not scheduled": look first, schedule when ready
   return { title: 'New path', goal: '', focus: '', due: null, steps: [], color: PATH_COLORS[n % PATH_COLORS.length], archived: true }
 }
 
@@ -190,6 +206,11 @@ function PathPanel(p: Props & { path: Path }) {
   const { path, nodes, done } = p
   const save = (fields: Partial<Path>) => void p.onSave({ ...path, ...fields })
   const timing = timingOf(path, p.meta)
+  const status = statusOf(path, p.meta)
+  const schedule = () => {
+    p.onMeta(path.id, { shelved: false })
+    save({ archived: false })
+  }
   const o = p.outlook.find((y) => y.pathId === path.id)
   const pressedByHand = !!p.meta[path.id]?.pressing
   const move = (i: number, by: -1 | 1) => {
@@ -211,7 +232,7 @@ function PathPanel(p: Props & { path: Path }) {
   return (
     <section className="column path-panel" style={{ '--pc': path.color } as React.CSSProperties}>
       <header className="column-head">
-        <span className="column-kicker">{path.archived ? 'Archived path' : 'Scheduled path'}</span>
+        <span className="column-kicker">{STATUS_LABEL[status]}</span>
         <input
           className="path-title"
           defaultValue={path.title}
@@ -222,9 +243,9 @@ function PathPanel(p: Props & { path: Path }) {
         {path.goal && <p className="column-desc">🎯 {path.goal}</p>}
         {path.focus && <p className="path-focus">{path.focus}</p>}
 
-        {path.archived ? (
+        {status !== 'scheduled' ? (
           <div className="path-sched">
-            <button className="btn-neon" onClick={() => save({ archived: false })} disabled={!path.steps.length}>
+            <button className="btn-neon" onClick={schedule} disabled={!path.steps.length}>
               📅 Schedule this path
             </button>
             {!path.steps.length && <span className="muted">Add chapters first.</span>}
@@ -336,9 +357,24 @@ function PathPanel(p: Props & { path: Path }) {
         })}
       </ol>
       <div className="path-foot">
-        {!path.archived && (
+        {status === 'scheduled' && (
           <button className="btn-ghost" onClick={() => save({ archived: true })}>
-            🗄 Move to Archive
+            Unschedule
+          </button>
+        )}
+        {status !== 'archived' ? (
+          <button
+            className="btn-ghost"
+            onClick={() => {
+              p.onMeta(path.id, { shelved: true })
+              if (!path.archived) save({ archived: true })
+            }}
+          >
+            🗄 Archive
+          </button>
+        ) : (
+          <button className="btn-ghost" onClick={() => p.onMeta(path.id, { shelved: false })}>
+            Restore
           </button>
         )}
         <button
@@ -464,7 +500,6 @@ function Drafter(p: Props & { onCancel: () => void }) {
       })
       if (due) p.onMeta(made.id, { timing: 'date' })
       p.onBuilt(r)
-      p.onGroup('archive')
       p.onSelect(made.id)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Something went wrong.')

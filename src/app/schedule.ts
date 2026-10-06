@@ -16,7 +16,10 @@ import type { Availability, Path, PathStep } from './types.ts'
 
 export type Timing = 'asap' | 'date' | 'none'
 /** per-path scheduling settings, kept in the synced prefs (key "pathMeta") */
-export type PathMeta = Record<string, { timing?: Timing; pressing?: boolean }>
+export type PathMeta = Record<string, { timing?: Timing; pressing?: boolean; shelved?: boolean }>
+/** where a path stands: in the plan, saved but not planned, or put away */
+export type PathStatus = 'scheduled' | 'unscheduled' | 'archived'
+export const statusOf = (p: Path, meta: PathMeta): PathStatus => (!p.archived ? 'scheduled' : meta[p.id]?.shelved ? 'archived' : 'unscheduled')
 export const timingOf = (p: Path, meta: PathMeta): Timing => meta[p.id]?.timing ?? (p.due ? 'date' : 'none')
 
 export interface Session {

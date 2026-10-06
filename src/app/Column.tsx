@@ -1,3 +1,4 @@
+import { useKeptScroll } from './keepScroll.ts'
 import type { RawItem } from './parse.ts'
 import type { SavedItem, Syllabus, TreeNode } from './types.ts'
 
@@ -36,6 +37,7 @@ export function Column(props: Props) {
   const isSyllabus = parent.level === 'course'
   const finished = isSyllabus && items ? items.filter((i) => done.has(i.id)).length : 0
   const { fold, onFold } = props
+  const kept = useKeptScroll<HTMLElement>(parent.id, !!items)
 
   if (fold === 'hidden') return null
 
@@ -52,7 +54,12 @@ export function Column(props: Props) {
   }
 
   return (
-    <section className={`column column-${parent.level} ${fold === 'compact' ? 'compact' : ''}`} data-panel={parent.id}>
+    <section
+      className={`column column-${parent.level} ${fold === 'compact' ? 'compact' : ''}`}
+      data-panel={parent.id}
+      ref={kept.ref}
+      onScroll={kept.onScroll}
+    >
       <header className="column-head">
         <div className="column-ctrl">
           <span className="column-kicker">{HEADINGS[parent.level]}</span>

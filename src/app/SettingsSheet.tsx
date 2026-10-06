@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { looksLikeKey, speak, speechModels, type Settings } from './generate.ts'
 import { DEFAULT_MODEL, DEFAULT_VOICE, SPEECH_MODEL, STYLES, sortVoices, voiceLabel, type SpeechModel } from './prompts.ts'
 import type { Bucket, Teacher } from './types.ts'
+import { InstallButton } from './InstallButton.tsx'
 
 interface Props {
   settings: Settings
@@ -280,6 +281,7 @@ export function SettingsSheet({
           <input type="checkbox" checked={showUsage} onChange={(e) => onShowUsage(e.target.checked)} />
           Show API spend (all time · week · day) in the top right
         </label>
+        <InstallButton className="btn-ghost" />
         <p className="sheet-note">
           <a className="lock-link" href="/__logout">
             Lock this device

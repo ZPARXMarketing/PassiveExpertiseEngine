@@ -17,6 +17,7 @@ import {
 } from './Study.tsx'
 import { HighlightCtx } from './highlight.ts'
 import { Marked } from './Marked.tsx'
+import { useKeptScroll } from './keepScroll.ts'
 import { lectureCounts, type Bucket, type CheckResult, type Lesson, type SavedItem, type TreeNode } from './types.ts'
 
 interface Props {
@@ -57,6 +58,7 @@ interface Props {
 export function Reader(p: Props) {
   const { chapter, course, lesson, studyTools, tools } = p
   const bodyRef = useRef<HTMLDivElement>(null)
+  const kept = useKeptScroll<HTMLElement>(chapter.id, !!lesson)
   const [selection, setSelection] = useState('')
   const [flash, setFlash] = useState(false)
   const [deeper, setDeeper] = useState<Set<string>>(new Set())
@@ -115,7 +117,7 @@ export function Reader(p: Props) {
 
   return (
     <HighlightCtx.Provider value={hl}>
-      <article className="column reader" onClick={() => activeMark && setActiveMark(null)}>
+      <article className="column reader" ref={kept.ref} onScroll={kept.onScroll} onClick={() => activeMark && setActiveMark(null)}>
         {selection.length > 2 && (
           <div className="hl-bar" onMouseDown={(e) => e.preventDefault()} role="toolbar" aria-label="Highlight">
             <span>Save to</span>

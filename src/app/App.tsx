@@ -39,6 +39,8 @@ import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 import { Usage } from './Usage.tsx'
+import { TextSizeButton } from './TextSize.tsx'
+import { PanelWidthSwitch, type PanelWidth } from './PanelWidth.tsx'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
@@ -90,6 +92,23 @@ export default function App() {
   const width = useWidth()
   /** manual fold per panel (keyed by its parent id); cleared on each new selection */
   const [folds, setFolds] = useState<Record<string, Fold>>({})
+  /** chosen width for the earlier panels (this device); auto = fold to fit */
+  const [panelWidth, setPanelWidth] = useState<PanelWidth>(() => {
+    try {
+      return (localStorage.getItem('panel-width') as PanelWidth) || 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+  const choosePanelWidth = (v: PanelWidth) => {
+    setPanelWidth(v)
+    setFolds({})
+    try {
+      localStorage.setItem('panel-width', v)
+    } catch {
+      /* private mode: applies this visit */
+    }
+  }
   const [topic, setTopic] = useState('')
 
   const [subjects, setSubjects] = useState<TreeNode[]>([])
@@ -106,6 +125,10 @@ export default function App() {
   const [saved, setSaved] = useState<SavedItem[]>([])
   const [buckets, setBuckets] = useState<Bucket[]>(DEFAULT_BUCKETS)
   const [showUsage, setShowUsage] = useState(true)
+  /** subject list order (synced): A–Z, newest first, or your own */
+  const [railSort, setRailSort] = useState<'az' | 'new' | 'custom'>('new')
+  const [railOrder, setRailOrder] = useState<string[]>([])
+  const [arranging, setArranging] = useState(false)
   /** nodes fetched only for the Library or a resume (not part of any open panel) */
   const [extra, setExtra] = useState<Record<string, TreeNode>>({})
   /** tiles streaming in before they are saved */
@@ -137,6 +160,8 @@ export default function App() {
     return () => clearTimeout(t)
   }, [jobs])
   const inflight = useRef(new Set<string>())
+  /** bumped by every navigation, so a slow subject lookup can't override a newer tap */
+  const navSeq = useRef(0)
   const columnsRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -149,6 +174,9 @@ export default function App() {
       ])
       setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
       setBuckets(await s.buckets().catch(() => DEFAULT_BUCKETS))
+      const rs = await s.pref<'az' | 'new' | 'custom'>('railSort').catch(() => null)
+      if (rs) setRailSort(rs)
+      setRailOrder((await s.pref<string[]>('railOrder').catch(() => null)) ?? [])
       const su = await s.pref<boolean>('showUsage').catch(() => null)
       if (su !== null) setShowUsage(su)
       const t = await s.pref<Teacher>('teacher').catch(() => null)
@@ -430,6 +458,7 @@ export default function App() {
   /** Select a node at its depth; everything to its right closes. */
   const select = useCallback(
     (node: TreeNode, depth: number, base: TreeNode[] = path) => {
+      navSeq.current++
       const next = [...base.slice(0, depth), node]
       setPath(next)
       setRailOpen(false)
@@ -500,15 +529,35 @@ export default function App() {
     return () => clearTimeout(t)
   }, [trails, store])
 
-  /** Open a subject where you left it; tapping the subject you're already in goes to its top. */
+  /**
+   * Open a subject exactly where you left it, so you can flip between subjects freely.
+   * Tapping the one you're already in keeps your place (its own panel still goes to the top).
+   * No saved trail (older subjects) → the last thing you opened inside it, from the visit log.
+   */
   const openSubject = useCallback(
-    (s: TreeNode) => {
-      const last = trails[s.id]
-      if (path[0]?.id === s.id || !last || last.length < 2) return select(s, 0, [])
+    async (s: TreeNode) => {
       setRailOpen(false)
-      void openById(last[last.length - 1])
+      setTab('explore')
+      if (path[0]?.id === s.id) return
+      const seq = ++navSeq.current
+      const last = trails[s.id]
+      let target = last && last.length > 1 ? last[last.length - 1] : ''
+      if (!target) {
+        const recent = [...visited.entries()]
+          .sort((a, b) => b[1].localeCompare(a[1]))
+          .map(([id]) => id)
+          .filter((id) => id !== s.id)
+        const have = await loadAncestors(recent).catch(() => known)
+        target = recent.find((id) => chainIds(id, have)[0] === s.id) ?? ''
+        if (seq !== navSeq.current) return
+        if (target) return openChain(chainIds(target, have).map((x) => have[x]).filter(Boolean))
+      }
+      if (!target) return select(s, 0, [])
+      const have = await loadAncestors([target])
+      // a newer tap wins over a slower lookup
+      if (seq === navSeq.current) openChain(chainIds(target, have).map((x) => have[x]).filter(Boolean))
     },
-    [trails, path, select, openById],
+    [trails, path, visited, known, select, loadAncestors, openChain],
   )
 
   // Resume wherever you (on any device) clicked last.
@@ -559,6 +608,36 @@ export default function App() {
     await store.saveBucket(b).catch(() => {})
   }
 
+  /** Subjects in the chosen order; in custom order, ones not placed yet lead (newest first). */
+  const sortedSubjects = useMemo(() => {
+    if (railSort === 'az') return [...subjects].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    if (railSort === 'new') return subjects
+    const at = new Map(railOrder.map((id, i) => [id, i]))
+    return [...subjects.filter((x) => !at.has(x.id)), ...subjects.filter((x) => at.has(x.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!)]
+  }, [subjects, railSort, railOrder])
+
+  const chooseRailSort = (next: 'az' | 'new' | 'custom') => {
+    // custom starts from whatever order is on screen now
+    if (next === 'custom' && !railOrder.length) {
+      const seed = sortedSubjects.map((x) => x.id)
+      setRailOrder(seed)
+      void store?.setPref('railOrder', seed).catch(() => {})
+    }
+    setRailSort(next)
+    setArranging(next === 'custom')
+    void store?.setPref('railSort', next).catch(() => {})
+  }
+
+  const moveSubject = (id: string, by: -1 | 1) => {
+    const ids = sortedSubjects.map((x) => x.id)
+    const i = ids.indexOf(id)
+    const j = i + by
+    if (i < 0 || j < 0 || j >= ids.length) return
+    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    setRailOrder(ids)
+    void store?.setPref('railOrder', ids).catch(() => {})
+  }
+
   const toggleUsage = (on: boolean) => {
     setShowUsage(on)
     void store?.setPref('showUsage', on).catch(() => {})
@@ -580,7 +659,7 @@ export default function App() {
     if (!title || !store) return
     setTopic('')
     const existing = subjects.find((s) => s.title.toLowerCase() === title.toLowerCase())
-    if (existing) return openSubject(existing)
+    if (existing) return void openSubject(existing)
     try {
       const [made] = await store.addNodes([{ parent_id: null, level: 'subject', title, summary: '', position: 0 }])
       setSubjects((s) => [made, ...s])
@@ -712,6 +791,8 @@ export default function App() {
               Library{saved.length > 0 && <span className="count">{saved.length}</span>}
             </button>
           </nav>
+          {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
+          <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>
@@ -724,18 +805,55 @@ export default function App() {
             {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
           </div>
           {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
+          {subjects.length > 1 && (
+            <div className="rail-sort" role="radiogroup" aria-label="Sort subjects">
+              {(
+                [
+                  ['az', 'A–Z'],
+                  ['new', 'Newest'],
+                  ['custom', 'Custom'],
+                ] as const
+              ).map(([k, label]) => (
+                <button
+                  key={k}
+                  role="radio"
+                  aria-checked={railSort === k}
+                  className={railSort === k ? 'on' : ''}
+                  onClick={() => (k === 'custom' && railSort === 'custom' ? setArranging((a) => !a) : chooseRailSort(k))}
+                >
+                  {label}
+                  {k === 'custom' && railSort === 'custom' && (arranging ? ' ✓' : ' ✎')}
+                </button>
+              ))}
+            </div>
+          )}
           <ul>
-            {subjects.map((s) => (
+            {sortedSubjects.map((s, i) => (
               <li key={s.id}>
                 <button
                   className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                  onClick={() => openSubject(s)}
+                  onClick={() => void openSubject(s)}
                 >
                   {s.title}
                 </button>
-                <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
-                  ×
-                </button>
+                {arranging && railSort === 'custom' ? (
+                  <span className="rail-move">
+                    <button onClick={() => moveSubject(s.id, -1)} disabled={i === 0} aria-label={`Move ${s.title} up`}>
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveSubject(s.id, 1)}
+                      disabled={i === sortedSubjects.length - 1}
+                      aria-label={`Move ${s.title} down`}
+                    >
+                      ↓
+                    </button>
+                  </span>
+                ) : (
+                  <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
+                    ×
+                  </button>
+                )}
               </li>
             ))}
           </ul>
@@ -800,7 +918,11 @@ export default function App() {
                 {panels.map((parent, depth) => (
                     <Column
                       key={parent.id}
-                      fold={folds[parent.id] ?? autoFolds[depth]}
+                      fold={
+                        folds[parent.id] ??
+                        // the newest list (no chapter open yet) always stays fully open
+                        (panelWidth !== 'auto' && (chapter || depth < panels.length - 1) ? panelWidth : autoFolds[depth])
+                      }
                       onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
                       selectedTitle={path[depth + 1]?.title}
                       parent={parent}

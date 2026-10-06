@@ -20,7 +20,14 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   always fits — more aggressively on phones. ‹ folds a panel, tapping a strip opens it, ☰ hides
   the subject rail. On phones a breadcrumb trail jumps back to any level.
 - **Each subject remembers where you were.** Hop Music → Physics → Chemistry → back to Music and
-  you land exactly where you left Music (tap the subject you're in to go back to its top). Synced.
+  you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
+  Tapping the subject you're already in keeps your place. Subjects from before trails were kept
+  open at the last thing you opened in them. Trail synced; scroll position per device.
+- **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
+  Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
+- **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.
+- **Add to home screen** (Settings): shows the iOS Share → Add to Home Screen steps; it then opens
+  full screen with its own icon.
 - **Highlighter buckets.** Select text in a chapter (or a deeper dive) and tap a bucket — each has
   its own name and colour (Settings → Highlighter buckets: rename, recolour, add, hide). Marks stay
   on the text every visit, on every device. Tap a mark to move it to another bucket or remove it.

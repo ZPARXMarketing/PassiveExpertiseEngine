@@ -23,7 +23,8 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
-- **Left rail: Library · Paths · Schedule** (tap again to go back to Explore).
+- **Explore | Library** toggle in the top bar. In Library mode the left panel swaps the subject
+  list for **Library · Paths · Schedule**, and each opens out in columns like Explore.
 - **Library** browses like Explore: subject → branch → course → chapter columns (only where
   you've saved something, with counts), then that chapter's highlights, lectures and star.
   Search, type and colour filters still apply; **Sort → By colour** groups highlights by bucket.
@@ -37,7 +38,8 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   can be reordered, re-timed, removed, ticked off; tap one to open the chapter.
 - **Schedule** — tell it when you're free in plain words (the AI turns that into weekly blocks
   and one-off busy days) or set blocks by hand. Your paths' unfinished chapters are laid into
-  that time, earliest due date first, long chapters split across blocks. Week / Month / Year.
+  that time, earliest due date first, long chapters split across blocks. Columns: Week / Month /
+  Year → the days with study planned → that day's sessions (Year: month → day → sessions).
   It re-plans itself whenever you tick something off, fall behind or change availability, and
   warns when a path won't finish by its due date. Google Calendar can replace manual
   availability later.

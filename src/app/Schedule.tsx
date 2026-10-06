@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { generate, type Settings } from './generate.ts'
 import { parseAvailability } from './parse.ts'
 import { hours } from './Paths.tsx'
@@ -24,15 +24,24 @@ const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), 
 const startOfWeek = (d: Date) => addDays(d, -d.getDay())
 
 /**
- * The study plan: your paths' chapters laid into your free time. Re-plans itself
+ * The study plan, opening out in columns like Explore: Week / Month / Year → the days with
+ * study planned → that day's sessions (Year goes month → day → sessions). Re-plans itself
  * whenever you finish something, fall behind, or change when you're free.
  */
 export function Schedule(p: Props) {
   const { paths, nodes, done, availability } = p
   const [view, setView] = useState<View>('week')
   const [anchor, setAnchor] = useState(() => new Date())
+  const [month, setMonth] = useState('')
+  const [day, setDay] = useState('')
   const [editing, setEditing] = useState(false)
   const today = dateKey(new Date())
+  // like Explore: the newest column slides into view
+  const colsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = colsRef.current
+    if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
+  }, [view, month, day])
 
   const { sessions, outlook } = useMemo(() => planSchedule(paths, done, availability), [paths, done, availability])
   const byDate = useMemo(() => {
@@ -42,166 +51,217 @@ export function Schedule(p: Props) {
   }, [sessions])
   const pathOf = (id: string) => paths.find((x) => x.id === id)
   const live = paths.filter((x) => !x.archived && x.steps.length)
+  const sum = (list: Session[]) => hours(list.reduce((t, s) => t + s.minutes, 0))
+  const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
 
-  const step = (dir: -1 | 1) =>
+  /** the dates the middle column lists */
+  const range = (from: Date, n: number) => Array.from({ length: n }, (_, i) => dateKey(addDays(from, i)))
+  const weekDays = range(startOfWeek(anchor), 7)
+  const monthStart = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
+  const monthDays = range(monthStart, new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate())
+  const yearMonths = Array.from({ length: 12 }, (_, m) => dateKey(new Date(anchor.getFullYear(), m, 1)).slice(0, 7))
+  const daysOfMonth = (prefix: string) => {
+    const [y, m] = prefix.split('-').map(Number)
+    return range(new Date(y, m - 1, 1), new Date(y, m, 0).getDate())
+  }
+  const listed = (keys: string[]) => keys.filter((k) => byDate.has(k))
+
+  const chooseView = (v: View) => {
+    setView(v)
+    setAnchor(new Date())
+    setMonth('')
+    setDay('')
+  }
+  const shift = (dir: -1 | 1) => {
+    setDay('')
+    setMonth('')
     setAnchor((a) =>
       view === 'week' ? addDays(a, 7 * dir) : view === 'month' ? new Date(a.getFullYear(), a.getMonth() + dir, 1) : new Date(a.getFullYear() + dir, 0, 1),
     )
-  const title =
+  }
+  const periodTitle =
     view === 'week'
       ? `Week of ${startOfWeek(anchor).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
       : view === 'month'
         ? anchor.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
         : String(anchor.getFullYear())
 
-  const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
+  const dayTiles = (keys: string[], depth: number) => {
+    const shown = listed(keys)
+    return shown.length ? (
+      <ol className="tiles">
+        {shown.map((k) => {
+          const list = byDate.get(k)!
+          const d = new Date(`${k}T12:00:00`)
+          return (
+            <li key={k} className="tile-wrap">
+              <button className={`tile ${day === k ? 'active' : ''} ${k === today ? 'today-tile' : ''}`} onClick={() => setDay(k)}>
+                <span className="tile-top">
+                  <span className="tile-num">{k === today ? 'Today' : d.toLocaleDateString(undefined, { weekday: 'short' })}</span>
+                  <span className="month-dots">
+                    {[...new Set(list.map((s) => s.pathId))].map((id) => (
+                      <i key={id} style={{ background: pathOf(id)?.color }} />
+                    ))}
+                  </span>
+                </span>
+                <span className="tile-title">{d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}</span>
+                <span className="tile-sum">
+                  {list.length} session{list.length === 1 ? '' : 's'} · {sum(list)}
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ol>
+    ) : (
+      <p className="sheet-note">{depth ? 'Nothing planned that month.' : `Nothing planned ${view === 'week' ? 'this week' : 'this month'}.`}</p>
+    )
+  }
+
+  const dayList = day ? (byDate.get(day) ?? []) : []
+  const dayDate = day ? new Date(`${day}T12:00:00`) : null
 
   return (
     <main className="explore schedule-view">
-      <div className="sched-bar">
-        <div className="seg sched-views" role="tablist" aria-label="View">
-          {(['week', 'month', 'year'] as View[]).map((v) => (
-            <button key={v} role="tab" aria-selected={view === v} className={view === v ? 'on' : ''} onClick={() => setView(v)}>
-              {v[0].toUpperCase() + v.slice(1)}
-            </button>
-          ))}
-        </div>
-        <div className="sched-nav">
-          <button className="icon-btn" onClick={() => step(-1)} aria-label="Previous">
-            ‹
-          </button>
-          <button className="btn-ghost" onClick={() => setAnchor(new Date())}>
-            Today
-          </button>
-          <button className="icon-btn" onClick={() => step(1)} aria-label="Next">
-            ›
-          </button>
-          <h2>{title}</h2>
-        </div>
-        <button className="btn-ghost" onClick={() => setEditing(true)}>
-          🕒 When I'm free{availability.weekly.length ? ` · ${hours(weeklyMinutes(availability))}/wk` : ''}
-        </button>
-      </div>
-
-      <div className="sched-body">
-        {!live.length ? (
-          <div className="lib-empty">
-            <h2>Nothing to schedule yet</h2>
-            <p>Make a Path first: the schedule lays its chapters into your free time.</p>
-            <button className="btn-neon" onClick={p.onGoPaths}>
-              Go to Paths
-            </button>
-          </div>
-        ) : noTime ? (
-          <div className="lib-empty">
-            <h2>When can you study?</h2>
-            <p>Tell it in plain words (or set the blocks by hand) and your paths get planned into that time.</p>
-            <button className="btn-neon" onClick={() => setEditing(true)}>
-              Set my free time
-            </button>
-          </div>
-        ) : (
-          <>
-            {outlook.some((o) => o.late || o.finish) && (
-              <ul className="outlook">
-                {outlook.map((o) => {
-                  const x = pathOf(o.pathId)
-                  if (!x || (!o.finish && !o.unplaced)) return null
-                  return (
-                    <li key={o.pathId} className={o.late ? 'late' : ''} style={{ '--pc': x.color } as React.CSSProperties}>
-                      <i className="path-dot" />
+      <div className="columns" ref={colsRef}>
+        <section className="column">
+          <header className="column-head">
+            <span className="column-kicker">Schedule</span>
+            <h2>Your study plan</h2>
+          </header>
+          <ol className="tiles">
+            {(['week', 'month', 'year'] as View[]).map((v) => {
+              const keys = v === 'week' ? range(startOfWeek(new Date()), 7) : v === 'month' ? range(new Date(new Date().getFullYear(), new Date().getMonth(), 1), 31) : null
+              const list = keys ? keys.flatMap((k) => byDate.get(k) ?? []) : sessions.filter((x) => x.date.startsWith(String(new Date().getFullYear())))
+              return (
+                <li key={v} className="tile-wrap">
+                  <button className={`tile ${view === v ? 'active' : ''}`} onClick={() => chooseView(v)}>
+                    <span className="tile-title">{v === 'week' ? 'Week' : v === 'month' ? 'Month' : 'Year'}</span>
+                    <span className="tile-sum">
+                      {list.length ? `${list.length} sessions · ${sum(list)} ${v === 'week' ? 'this week' : v === 'month' ? 'this month' : 'this year'}` : 'Nothing planned yet'}
+                    </span>
+                  </button>
+                </li>
+              )
+            })}
+            <li className="tile-wrap">
+              <button className="tile" onClick={() => setEditing(true)}>
+                <span className="tile-title">🕒 When I'm free</span>
+                <span className="tile-sum">{noTime ? 'Not set yet' : `${hours(weeklyMinutes(availability))} a week`}</span>
+              </button>
+            </li>
+          </ol>
+          {!live.length && (
+            <div className="sched-hint">
+              <p className="sheet-note">Make a Path first: the schedule lays its chapters into your free time.</p>
+              <button className="btn-neon" onClick={p.onGoPaths}>
+                Go to Paths
+              </button>
+            </div>
+          )}
+          {!!live.length && noTime && (
+            <div className="sched-hint">
+              <p className="sheet-note">Tell it when you can study and your paths get planned into that time.</p>
+              <button className="btn-neon" onClick={() => setEditing(true)}>
+                Set my free time
+              </button>
+            </div>
+          )}
+          {outlook.some((o) => o.finish || o.unplaced) && (
+            <ul className="outlook">
+              {outlook.map((o) => {
+                const x = pathOf(o.pathId)
+                if (!x || (!o.finish && !o.unplaced)) return null
+                return (
+                  <li key={o.pathId} className={o.late ? 'late' : ''} style={{ '--pc': x.color } as React.CSSProperties}>
+                    <i className="path-dot" />
+                    <span>
                       <b>{x.title}</b>
                       {o.unplaced
                         ? ` — ${hours(o.unplaced)} doesn't fit before ${x.due ? 'the due date' : 'the next 6 months'}. Add free time or trim steps.`
                         : o.late
                           ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}. Add free time or move the date.`
                           : ` — on track, done ${fmt(o.finish)}${x.due ? ` (due ${fmt(x.due)})` : ''}.`}
+                    </span>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </section>
+
+        {!!live.length && !noTime && (
+          <section className="column">
+            <header className="column-head">
+              <span className="column-kicker">{view === 'week' ? 'Days' : view === 'month' ? 'Days' : 'Months'}</span>
+              <div className="sched-nav">
+                <button className="icon-btn" onClick={() => shift(-1)} aria-label="Previous">
+                  ‹
+                </button>
+                <h2>{periodTitle}</h2>
+                <button className="icon-btn" onClick={() => shift(1)} aria-label="Next">
+                  ›
+                </button>
+              </div>
+            </header>
+            {view === 'week' && dayTiles(weekDays, 0)}
+            {view === 'month' && dayTiles(monthDays, 0)}
+            {view === 'year' && (
+              <ol className="tiles">
+                {yearMonths.map((m) => {
+                  const list = sessions.filter((x) => x.date.startsWith(m))
+                  const dues = live.filter((x) => x.due?.startsWith(m))
+                  if (!list.length && !dues.length) return null
+                  return (
+                    <li key={m} className="tile-wrap">
+                      <button
+                        className={`tile ${month === m ? 'active' : ''}`}
+                        onClick={() => {
+                          setMonth(m)
+                          setDay('')
+                        }}
+                      >
+                        <span className="tile-title">{new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })}</span>
+                        <span className="tile-sum">{list.length ? `${list.length} sessions · ${sum(list)}` : 'Nothing planned'}</span>
+                        {dues.map((x) => (
+                          <span key={x.id} className="year-due" style={{ '--pc': x.color } as React.CSSProperties}>
+                            <i className="path-dot" /> {x.title} due {fmt(x.due!)}
+                          </span>
+                        ))}
+                      </button>
                     </li>
                   )
                 })}
-              </ul>
+              </ol>
             )}
-            {view === 'week' && (
-              <div className="week">
-                {Array.from({ length: 7 }, (_, i) => addDays(startOfWeek(anchor), i)).map((d) => {
-                  const key = dateKey(d)
-                  const list = byDate.get(key) ?? []
-                  const free = blocksOn(d, availability)
-                  return (
-                    <section key={key} className={`day ${key === today ? 'today' : ''} ${key < today ? 'past' : ''}`}>
-                      <header>
-                        <b>{DAY[d.getDay()]}</b> {d.getDate()}
-                        {!!free.length && <small>{free.map((b) => `${b.start}–${b.end}`).join(', ')}</small>}
-                      </header>
-                      {!list.length && <p className="day-empty">{key < today ? '' : free.length ? 'Free' : '—'}</p>}
-                      {list.map((s, i) => (
-                        <SessionCard key={i} s={s} path={pathOf(s.pathId)} nodes={nodes} done={done} onOpen={p.onOpen} onToggleDone={p.onToggleDone} />
-                      ))}
-                    </section>
-                  )
-                })}
-              </div>
-            )}
-            {view === 'month' && (
-              <div className="month">
-                {DAY.map((d) => (
-                  <div key={d} className="month-head">
-                    {d}
-                  </div>
-                ))}
-                {monthCells(anchor).map((d, i) => {
-                  if (!d) return <div key={i} className="month-cell blank" />
-                  const key = dateKey(d)
-                  const list = byDate.get(key) ?? []
-                  return (
-                    <button
-                      key={key}
-                      className={`month-cell ${key === today ? 'today' : ''} ${list.length ? 'has' : ''}`}
-                      onClick={() => {
-                        setAnchor(d)
-                        setView('week')
-                      }}
-                    >
-                      <span className="month-num">{d.getDate()}</span>
-                      <span className="month-dots">
-                        {[...new Set(list.map((s) => s.pathId))].map((id) => (
-                          <i key={id} style={{ background: pathOf(id)?.color }} />
-                        ))}
-                      </span>
-                      {!!list.length && <small>{hours(list.reduce((t, s) => t + s.minutes, 0))}</small>}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {view === 'year' && (
-              <div className="year">
-                {Array.from({ length: 12 }, (_, m) => new Date(anchor.getFullYear(), m, 1)).map((d) => {
-                  const prefix = dateKey(d).slice(0, 7)
-                  const list = sessions.filter((s) => s.date.startsWith(prefix))
-                  const ends = live.filter((x) => x.due?.startsWith(prefix))
-                  return (
-                    <button
-                      key={prefix}
-                      className={`year-cell ${list.length ? 'has' : ''}`}
-                      onClick={() => {
-                        setAnchor(d)
-                        setView('month')
-                      }}
-                    >
-                      <b>{d.toLocaleDateString(undefined, { month: 'long' })}</b>
-                      <span>{list.length ? `${list.length} sessions · ${hours(list.reduce((t, s) => t + s.minutes, 0))}` : '—'}</span>
-                      {ends.map((x) => (
-                        <span key={x.id} className="year-due" style={{ '--pc': x.color } as React.CSSProperties}>
-                          <i className="path-dot" /> {x.title} due {fmt(x.due!)}
-                        </span>
-                      ))}
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-          </>
+          </section>
+        )}
+
+        {view === 'year' && month && (
+          <section className="column">
+            <header className="column-head">
+              <span className="column-kicker">Days</span>
+              <h2>{new Date(`${month}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h2>
+            </header>
+            {dayTiles(daysOfMonth(month), 1)}
+          </section>
+        )}
+
+        {day && dayDate && (
+          <section className="column day-panel">
+            <header className="column-head">
+              <span className="column-kicker">{day === today ? 'Today' : dayDate.toLocaleDateString(undefined, { weekday: 'long' })}</span>
+              <h2>{dayDate.toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</h2>
+              <p className="column-desc">
+                Free {blocksOn(dayDate, availability).map((b) => `${b.start}–${b.end}`).join(', ') || '—'} · {sum(dayList)} planned
+              </p>
+            </header>
+            <div className="day-sessions">
+              {dayList.map((s, i) => (
+                <SessionCard key={i} s={s} path={pathOf(s.pathId)} nodes={nodes} done={done} onOpen={p.onOpen} onToggleDone={p.onToggleDone} />
+              ))}
+            </div>
+          </section>
         )}
       </div>
 
@@ -221,13 +281,6 @@ export function Schedule(p: Props) {
 }
 
 const fmt = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
-
-/** Dates of the month laid on a Sunday-first grid (nulls pad the first week). */
-function monthCells(anchor: Date): (Date | null)[] {
-  const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1)
-  const days = new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate()
-  return [...Array<null>(first.getDay()).fill(null), ...Array.from({ length: days }, (_, i) => addDays(first, i))]
-}
 
 function SessionCard({
   s,
@@ -262,7 +315,10 @@ function SessionCard({
       </div>
       <button className="session-main" onClick={() => onOpen(s.nodeId)} title={path?.title}>
         <span className="session-title">{node?.title ?? '…'}</span>
-        {course?.meta.code && <span className="session-sub">{course.meta.code}</span>}
+        <span className="session-sub">
+          {course?.meta.code ? `${course.meta.code} · ` : ''}
+          {path?.title}
+        </span>
       </button>
     </div>
   )

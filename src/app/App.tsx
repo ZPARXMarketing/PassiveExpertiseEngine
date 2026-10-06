@@ -120,6 +120,11 @@ export default function App() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'schedule'>('explore')
+  /** the Library-mode section last open, so the Library toggle returns to it */
+  const [section, setSection] = useState<'library' | 'paths' | 'schedule'>('library')
+  useEffect(() => {
+    if (tab !== 'explore') setSection(tab)
+  }, [tab])
   const [paths, setPaths] = useState<Path[]>([])
   /** the path open in the Paths view ('' none, 'new' the drafter) */
   const [pathSel, setPathSel] = useState('')
@@ -809,6 +814,14 @@ export default function App() {
               Learn
             </button>
           </form>
+          <nav className="tabs" aria-label="Mode">
+            <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
+              Explore
+            </button>
+            <button className={tab !== 'explore' ? 'on' : ''} onClick={() => setTab(section)}>
+              Library
+            </button>
+          </nav>
           {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
           <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
@@ -818,97 +831,102 @@ export default function App() {
         </header>
 
         <aside className="rail">
-          <nav className="rail-nav" aria-label="Sections">
-            {(
-              [
-                ['library', '📚', 'Library', saved.length],
-                ['paths', '🧭', 'Paths', paths.filter((x) => !x.archived).length],
-                ['schedule', '🗓', 'Schedule', 0],
-              ] as const
-            ).map(([k, icon, label, n]) => (
-              <button
-                key={k}
-                className={tab === k ? 'on' : ''}
-                onClick={() => {
-                  setTab(tab === k ? 'explore' : k)
-                  setRailOpen(false)
-                }}
-                aria-pressed={tab === k}
-              >
-                <span className="rail-nav-icon">{icon}</span>
-                {label}
-                {n > 0 && <span className="count">{n}</span>}
-              </button>
-            ))}
-          </nav>
-          <div className="rail-head">
-            <span>Subjects</span>
-            {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
-          </div>
-          {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
-          {subjects.length > 1 && (
-            <div className="rail-sort" role="radiogroup" aria-label="Sort subjects">
+          {tab !== 'explore' ? (
+            <nav className="rail-nav" aria-label="Sections">
               {(
                 [
-                  ['az', 'A–Z'],
-                  ['new', 'Newest'],
-                  ['custom', 'Custom'],
+                  ['library', '📚', 'Library', saved.length],
+                  ['paths', '🧭', 'Paths', paths.filter((x) => !x.archived).length],
+                  ['schedule', '🗓', 'Schedule', 0],
                 ] as const
-              ).map(([k, label]) => (
+              ).map(([k, icon, label, n]) => (
                 <button
                   key={k}
-                  role="radio"
-                  aria-checked={railSort === k}
-                  className={railSort === k ? 'on' : ''}
-                  onClick={() => (k === 'custom' && railSort === 'custom' ? setArranging((a) => !a) : chooseRailSort(k))}
+                  className={tab === k ? 'on' : ''}
+                  onClick={() => {
+                    setTab(k)
+                    setRailOpen(false)
+                  }}
+                  aria-pressed={tab === k}
                 >
+                  <span className="rail-nav-icon">{icon}</span>
                   {label}
-                  {k === 'custom' && railSort === 'custom' && (arranging ? ' ✓' : ' ✎')}
+                  {n > 0 && <span className="count">{n}</span>}
                 </button>
               ))}
-            </div>
-          )}
-          <ul>
-            {sortedSubjects.map((s, i) => (
-              <li key={s.id}>
-                <button
-                  className={`rail-item ${tab === 'explore' && path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                  onClick={() => void openSubject(s)}
-                >
-                  {s.title}
-                </button>
-                {arranging && railSort === 'custom' ? (
-                  <span className="rail-move">
-                    <button onClick={() => moveSubject(s.id, -1)} disabled={i === 0} aria-label={`Move ${s.title} up`}>
-                      ↑
-                    </button>
+            </nav>
+          ) : (
+            <>
+              <div className="rail-head">
+                <span>Subjects</span>
+                {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+              </div>
+              {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
+              {subjects.length > 1 && (
+                <div className="rail-sort" role="radiogroup" aria-label="Sort subjects">
+                  {(
+                    [
+                      ['az', 'A–Z'],
+                      ['new', 'Newest'],
+                      ['custom', 'Custom'],
+                    ] as const
+                  ).map(([k, label]) => (
                     <button
-                      onClick={() => moveSubject(s.id, 1)}
-                      disabled={i === sortedSubjects.length - 1}
-                      aria-label={`Move ${s.title} down`}
+                      key={k}
+                      role="radio"
+                      aria-checked={railSort === k}
+                      className={railSort === k ? 'on' : ''}
+                      onClick={() => (k === 'custom' && railSort === 'custom' ? setArranging((a) => !a) : chooseRailSort(k))}
                     >
-                      ↓
+                      {label}
+                      {k === 'custom' && railSort === 'custom' && (arranging ? ' ✓' : ' ✎')}
                     </button>
-                  </span>
-                ) : (
-                  <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
-                    ×
-                  </button>
-                )}
-              </li>
-            ))}
-          </ul>
-          <div className="legend">
-            <span>
-              <i className="dot seen" /> explored
-            </span>
-            <span>
-              <i className="dot done" /> completed
-            </span>
-            <span>
-              <i className="dot star" /> saved
-            </span>
-          </div>
+                  ))}
+                </div>
+              )}
+              <ul>
+                {sortedSubjects.map((s, i) => (
+                  <li key={s.id}>
+                    <button
+                      className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                      onClick={() => void openSubject(s)}
+                    >
+                      {s.title}
+                    </button>
+                    {arranging && railSort === 'custom' ? (
+                      <span className="rail-move">
+                        <button onClick={() => moveSubject(s.id, -1)} disabled={i === 0} aria-label={`Move ${s.title} up`}>
+                          ↑
+                        </button>
+                        <button
+                          onClick={() => moveSubject(s.id, 1)}
+                          disabled={i === sortedSubjects.length - 1}
+                          aria-label={`Move ${s.title} down`}
+                        >
+                          ↓
+                        </button>
+                      </span>
+                    ) : (
+                      <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
+                        ×
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <div className="legend">
+                <span>
+                  <i className="dot seen" /> explored
+                </span>
+                <span>
+                  <i className="dot done" /> completed
+                </span>
+                <span>
+                  <i className="dot star" /> saved
+                </span>
+              </div>
+            </>
+          )}
         </aside>
         <div className="rail-scrim" onClick={() => setRailOpen(false)} />
 

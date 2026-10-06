@@ -42,10 +42,15 @@ export function Paths(p: Props) {
   useEffect(() => {
     if (missing) void load.current(missing.split(','))
   }, [missing])
+  const colsRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = colsRef.current
+    if (el) requestAnimationFrame(() => el.scrollTo({ left: el.scrollWidth, behavior: 'smooth' }))
+  }, [selected])
 
   return (
     <main className="explore paths-view">
-      <div className="columns">
+      <div className="columns" ref={colsRef}>
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Paths</span>

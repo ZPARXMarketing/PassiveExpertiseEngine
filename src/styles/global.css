@@ -3186,51 +3186,40 @@ mark.hl-active {
 }
 
 /* ---------- Schedule ---------- */
-.schedule-view {
-  overflow: hidden;
-}
-.sched-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--border);
-}
-.sched-views.seg {
-  display: flex;
-  margin: 0;
-  gap: 4px;
-}
-.sched-views.seg button {
-  min-height: 36px;
-  padding: 0 14px;
-}
-.sched-views.seg button.on {
-  border-color: var(--neon);
-  color: var(--neon);
-  background: var(--neon-soft);
-}
 .sched-nav {
   display: flex;
   align-items: center;
-  gap: 6px;
-  flex: 1;
+  gap: 4px;
+  margin-top: 2px;
 }
 .sched-nav h2 {
-  margin: 0 0 0 6px;
-  font-family: var(--font-display);
-  font-size: 18px;
-}
-.sched-body {
   flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 14px 16px 30px;
+  margin: 0;
+  text-align: center;
+}
+.schedule-view .columns .column {
+  flex: 0 0 min(250px, 86vw);
+}
+.schedule-view .columns .day-panel {
+  flex: 1 0 min(380px, calc(100vw - 32px));
+  max-width: 560px;
+}
+.day-sessions {
+  display: grid;
+  gap: 10px;
+}
+.tile.today-tile {
+  border-color: var(--neon);
+}
+.sched-hint {
+  margin: 14px 4px;
+  display: grid;
+  gap: 8px;
+  justify-items: start;
 }
 .outlook {
   list-style: none;
-  margin: 0 0 14px;
+  margin: 16px 4px 0;
   padding: 0;
   display: grid;
   gap: 6px;
@@ -3240,54 +3229,13 @@ mark.hl-active {
 .outlook li {
   display: flex;
   align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
+  gap: 8px;
 }
 .outlook li.late {
   color: var(--amber);
 }
 .outlook b {
   color: var(--text);
-}
-.week {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 8px;
-  min-width: 700px;
-}
-.day {
-  min-width: 0;
-  min-height: 160px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.day.today {
-  border-color: var(--neon);
-  box-shadow: var(--glow-card);
-}
-.day.past {
-  opacity: 0.55;
-}
-.day header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: 14px;
-}
-.day header small {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-faint);
-}
-.day-empty {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: 13px;
 }
 .session {
   display: flex;
@@ -3327,6 +3275,7 @@ mark.hl-active {
   height: 22px;
 }
 .session-title {
+  color: var(--text);
   overflow-wrap: break-word;
   hyphens: auto;
   font-weight: 600;
@@ -3337,42 +3286,6 @@ mark.hl-active {
   font-size: 11.5px;
   color: var(--text-dim);
 }
-.month {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 6px;
-  max-width: 980px;
-}
-.month-head {
-  font-size: 12px;
-  color: var(--text-faint);
-  text-align: center;
-}
-.month-cell {
-  min-height: 78px;
-  padding: 8px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  text-align: left;
-}
-.month-cell.blank {
-  border: 0;
-  background: none;
-}
-.month-cell.today {
-  border-color: var(--neon);
-}
-.month-cell.has {
-  background: var(--surface-2);
-}
-.month-num {
-  font-weight: 600;
-}
 .month-dots {
   display: flex;
   gap: 3px;
@@ -3381,36 +3294,6 @@ mark.hl-active {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-}
-.month-cell small {
-  font-size: 11px;
-  color: var(--text-dim);
-}
-.year {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 10px;
-  max-width: 980px;
-}
-.year-cell {
-  padding: 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  text-align: left;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-.year-cell b {
-  color: var(--text);
-  font-size: 15px;
-}
-.year-cell.has {
-  background: var(--surface-2);
 }
 .year-due {
   display: flex;
@@ -3436,16 +3319,4 @@ mark.hl-active {
   justify-content: space-between;
   align-items: center;
   padding: 6px 4px;
-}
-@media (max-width: 600px) {
-  .week {
-    grid-template-columns: 1fr;
-    min-width: 0;
-  }
-  .day {
-    min-height: 0;
-  }
-  .day.past {
-    display: none;
-  }
 }

@@ -51,6 +51,8 @@ interface Props {
   /** add a chapter (or a course's chapters) to a path; 'new' makes one. Resolves to the path's name. */
   onAddToPath: (nodeId: string, pathId: string) => Promise<string>
   panelWidth: PanelWidth
+  /** subject picked in the left panel */
+  subjectId: string
 }
 
 interface ChapterGroup {
@@ -98,7 +100,7 @@ const SORTS: [Sort, string][] = [
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth, subjectId }: Props) {
   const initial = useMemo(loadView, [])
   const [filter, setFilter] = useState<Filter>(initial.filter)
   const [query, setQuery] = useState(initial.query)
@@ -369,6 +371,7 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
           onRemove={onRemove}
           onAddToPath={onAddToPath}
           panelWidth={panelWidth}
+          subjectId={subjectId}
         />
       )}
     </section>
@@ -389,8 +392,10 @@ function Browse({
   onRemove,
   onAddToPath,
   panelWidth,
+  subjectId,
 }: {
   panelWidth: PanelWidth
+  subjectId: string
   tree: SubjectGroup[]
   sel: string[]
   setSel: (s: string[]) => void
@@ -404,7 +409,8 @@ function Browse({
   onAddToPath: (nodeId: string, pathId: string) => Promise<string>
 }) {
   // follow the saved selection as far as it still exists; a level with one choice opens itself
-  const subject = tree.find((x) => x.node.id === sel[0]) ?? (tree.length === 1 ? tree[0] : undefined)
+  // the subject is picked in the left panel, like Explore
+  const subject = tree.find((x) => x.node.id === subjectId)
   const branches = subject ? [...subject.branches.values()].sort(byPos) : []
   const branch = branches.find((x) => x.node.id === sel[1]) ?? (branches.length === 1 ? branches[0] : undefined)
   const courses = branch ? [...branch.courses.values()].sort(byPos) : []
@@ -416,9 +422,9 @@ function Browse({
   // columns that don't fit fold into strips, oldest first (tap one to open it again)
   const [keep, setKeep] = useState(-1)
   useEffect(() => setKeep(-1), [sel])
-  const shown = [true, !!subject, !!branch, !!course, !!chapter].filter(Boolean).length
+  const shown = [!!subject, !!branch, !!course, !!chapter].filter(Boolean).length
   const { ref: colsRef, folded } = useFit(
-    Array.from({ length: shown }, (_, i) => (i === 4 ? 300 : 250)),
+    Array.from({ length: shown }, (_, i) => (i === 3 ? 300 : 250)),
     keep,
     panelWidth,
   )
@@ -433,26 +439,14 @@ function Browse({
 
   return (
     <div className={`lib-cols pw-${panelWidth}`} ref={colsRef}>
-      {strip(0, 'Subjects', subject?.node.title) ?? (
-      <section className="column">
-        <header className="column-head">
-          <span className="column-kicker">Subjects</span>
-        </header>
-        <ol className="tiles">
-          {tree.map((g) => (
-            <li key={g.node.id} className="tile-wrap">
-              <button className={`tile ${subject === g ? 'active' : ''}`} onClick={() => pick(0, g.node.id)}>
-                <span className="tile-title lib-tile-row">
-                  {g.node.title} {count(g.count)}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ol>
-      </section>
+      {!subject && (
+        <div className="lib-empty">
+          <h2>Pick a subject on the left</h2>
+          <p>Only what you’ve saved is here: starred courses and chapters, highlights and lectures.</p>
+        </div>
       )}
 
-      {subject && (strip(1, subject.node.title, branch?.node.title) ?? (
+      {subject && (strip(0, subject.node.title, branch?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Branches</span>
@@ -472,7 +466,7 @@ function Browse({
         </section>
       ))}
 
-      {branch && (strip(2, branch.node.title, course?.node.title) ?? (
+      {branch && (strip(1, branch.node.title, course?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">Courses</span>
@@ -496,7 +490,7 @@ function Browse({
         </section>
       ))}
 
-      {course && (strip(3, course.node.meta.code || course.node.title, chapter?.node.title) ?? (
+      {course && (strip(2, course.node.meta.code || course.node.title, chapter?.node.title) ?? (
         <section className="column">
           <header className="column-head">
             <span className="column-kicker">{course.node.meta.code || 'Course'}</span>

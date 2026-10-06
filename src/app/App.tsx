@@ -13,9 +13,9 @@ import {
   type RawItem,
 } from './parse.ts'
 import { openStore, type NewPath, type Store } from './store.ts'
-import { Paths, PATH_COLORS } from './Paths.tsx'
-import { Schedule } from './Schedule.tsx'
-import { EMPTY_AVAILABILITY } from './schedule.ts'
+import { Paths, PATH_COLORS, hours, type Group } from './Paths.tsx'
+import { AvailabilityEditor, Schedule } from './Schedule.tsx'
+import { EMPTY_AVAILABILITY, planSchedule, weeklyMinutes, type PathMeta, type Timing } from './schedule.ts'
 import { childrenOrGenerate } from './tree.ts'
 import {
   chainIds,
@@ -121,10 +121,18 @@ export default function App() {
   const [done, setDone] = useState<Set<string>>(new Set())
   const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'schedule'>('explore')
   /** the Library-mode section last open, so the Library toggle returns to it */
-  const [section, setSection] = useState<'library' | 'paths' | 'schedule'>('library')
+  /** the Paths-mode section last open (Paths or Schedule), so the switch returns to it */
+  const [section, setSection] = useState<'paths' | 'schedule'>('paths')
   useEffect(() => {
-    if (tab !== 'explore') setSection(tab)
+    if (tab === 'paths' || tab === 'schedule') setSection(tab)
   }, [tab])
+  const plansMode = tab === 'paths' || tab === 'schedule'
+  /** Library mode: the subject picked in the left panel */
+  const [libSubject, setLibSubject] = useState('')
+  /** Paths: which list is open, and each path's timing / pressing (synced pref) */
+  const [pathGroup, setPathGroup] = useState<Group>('scheduled')
+  const [pathMeta, setPathMeta] = useState<PathMeta>({})
+  const [editingFree, setEditingFree] = useState(false)
   const [paths, setPaths] = useState<Path[]>([])
   /** the path open in the Paths view ('' none, 'new' the drafter) */
   const [pathSel, setPathSel] = useState('')
@@ -200,6 +208,7 @@ export default function App() {
       setPaths(await s.paths().catch(() => []))
       const av = await s.pref<Availability>('availability').catch(() => null)
       if (av) setAvailability({ ...EMPTY_AVAILABILITY, ...av })
+      setPathMeta((await s.pref<PathMeta>('pathMeta').catch(() => null)) ?? {})
     })
   }, [])
 
@@ -608,6 +617,18 @@ export default function App() {
     return [...subjects.filter((x) => !at.has(x.id)), ...subjects.filter((x) => at.has(x.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!)]
   }, [subjects, railSort, railOrder])
 
+  /** Library mode lists only subjects with something saved (with how much) */
+  const savedSubjects = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const x of [...saved, ...lectures]) {
+      const top = known[chainIds(x.node_id, known)[0]]
+      if (top?.level === 'subject') m.set(top.id, (m.get(top.id) ?? 0) + 1)
+    }
+    return m
+  }, [saved, lectures, known])
+
+  const railSubjects = tab === 'library' ? sortedSubjects.filter((x) => savedSubjects.has(x.id)) : sortedSubjects
+
   const chooseRailSort = (next: 'az' | 'new' | 'custom') => {
     // custom starts from whatever order is on screen now
     if (next === 'custom' && !railOrder.length) {
@@ -683,13 +704,24 @@ export default function App() {
     }
     const target =
       pathId === 'new'
-        ? await savePath({ title: node?.title ?? 'New path', goal: '', focus: '', due: null, steps: [], color: PATH_COLORS[paths.length % PATH_COLORS.length], archived: false })
+        ? // new paths start in the Archive: look first, schedule when ready
+          await savePath({ title: node?.title ?? 'New path', goal: '', focus: '', due: null, steps: [], color: PATH_COLORS[paths.length % PATH_COLORS.length], archived: true })
         : paths.find((x) => x.id === pathId)
     if (!target) throw new Error('That path is gone.')
     const fresh = ids.filter((id) => !target.steps.some((st) => st.node_id === id))
     await savePath({ ...target, steps: [...target.steps, ...fresh.map((id) => ({ node_id: id, note: '', minutes: 30 }))] })
     return target.title
   }
+
+  const saveMeta = (id: string, fields: { timing?: Timing; pressing?: boolean }) =>
+    setPathMeta((m) => {
+      const next = { ...m, [id]: { ...m[id], ...fields } }
+      void store?.setPref('pathMeta', next).catch(() => {})
+      return next
+    })
+
+  /** the study plan, worked out once and shared by Paths and Schedule */
+  const plan = useMemo(() => planSchedule(paths, done, availability, pathMeta), [paths, done, availability, pathMeta])
 
   const saveAvailability = (a: Availability) => {
     setAvailability(a)
@@ -840,8 +872,11 @@ export default function App() {
             <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
               Explore
             </button>
-            <button className={tab !== 'explore' ? 'on' : ''} onClick={() => setTab(section)}>
+            <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
               Library
+            </button>
+            <button className={plansMode ? 'on' : ''} onClick={() => setTab(section)}>
+              Paths
             </button>
           </nav>
           <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />
@@ -851,8 +886,8 @@ export default function App() {
           {showUsage && <Usage />}
         </header>
 
-        <aside className={`rail ${tab !== 'explore' ? 'rail-sections' : ''}`}>
-          {tab !== 'explore' ? (
+        <aside className={`rail ${plansMode ? 'rail-sections' : ''}`}>
+          {plansMode ? (
             <>
             <div className="rail-head">
               <span>Workspace</span>
@@ -861,8 +896,7 @@ export default function App() {
             <nav className="rail-nav" aria-label="Sections">
               {(
                 [
-                  ['library', '📚', 'Library', saved.length],
-                  ['paths', '🧭', 'Paths', paths.filter((x) => !x.archived).length],
+                  ['paths', '🧭', 'Paths', paths.length],
                   ['schedule', '🗓', 'Schedule', 0],
                 ] as const
               ).map(([k, icon, label, n]) => (
@@ -881,14 +915,23 @@ export default function App() {
                 </button>
               ))}
             </nav>
+            <button className="free-chip" onClick={() => setEditingFree(true)}>
+              🕒 When I'm free ·{' '}
+              {availability.weekly.length || availability.overrides.some((o) => o.blocks.length)
+                ? `${hours(weeklyMinutes(availability))}/wk`
+                : 'not set'}
+            </button>
             </>
           ) : (
             <>
               <div className="rail-head">
-                <span>Subjects</span>
+                <span>{tab === 'library' ? 'Saved subjects' : 'Subjects'}</span>
                 {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
               </div>
-              {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
+              {tab === 'library' && !railSubjects.length && (
+                <p className="rail-empty">Nothing saved yet. Star a course or chapter, or highlight text in a chapter.</p>
+              )}
+              {tab !== 'library' && subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
               {subjects.length > 1 && (
                 <div className="rail-sort" role="radiogroup" aria-label="Sort subjects">
                   {(
@@ -916,7 +959,7 @@ export default function App() {
                 </div>
               )}
               <ul>
-                {sortedSubjects.map((s) => (
+                {railSubjects.map((s) => (
                   <li
                     key={s.id}
                     className={dragId === s.id ? 'dragging' : ''}
@@ -926,8 +969,12 @@ export default function App() {
                     }}
                   >
                     <button
-                      className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                      onClick={() => void openSubject(s)}
+                      className={`rail-item ${(tab === 'library' ? libSubject : path[0]?.id) === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                      onClick={() => {
+                        if (tab !== 'library') return void openSubject(s)
+                        setLibSubject(s.id)
+                        setRailOpen(false)
+                      }}
                     >
                       {s.title}
                     </button>
@@ -942,6 +989,8 @@ export default function App() {
                       >
                         ≡
                       </span>
+                    ) : tab === 'library' ? (
+                      <span className="rail-count">{savedSubjects.get(s.id)}</span>
                     ) : (
                       <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
                         ×
@@ -950,6 +999,7 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+              {tab === 'explore' && (
               <div className="legend">
                 <span>
                   <i className="dot seen" /> explored
@@ -961,6 +1011,7 @@ export default function App() {
                   <i className="dot star" /> saved
                 </span>
               </div>
+              )}
             </>
           )}
         </aside>
@@ -980,6 +1031,7 @@ export default function App() {
             paths={paths}
             onAddToPath={addToPath}
             panelWidth={panelWidth}
+            subjectId={libSubject}
           />
         )}
 
@@ -1001,6 +1053,11 @@ export default function App() {
             }}
             selected={pathSel}
             onSelect={setPathSel}
+            group={pathGroup}
+            onGroup={setPathGroup}
+            meta={pathMeta}
+            onMeta={saveMeta}
+            outlook={plan.outlook}
             panelWidth={panelWidth}
           />
         )}
@@ -1017,6 +1074,11 @@ export default function App() {
             onToggleDone={(id) => void toggleDone(id)}
             onGoPaths={() => setTab('paths')}
             panelWidth={panelWidth}
+            plan={plan}
+            meta={pathMeta}
+            onMeta={saveMeta}
+            onSave={savePath}
+            onEditFree={() => setEditingFree(true)}
           />
         )}
 
@@ -1133,6 +1195,18 @@ export default function App() {
             })
           }
         />
+
+        {editingFree && (
+          <AvailabilityEditor
+            settings={settings}
+            value={availability}
+            onSave={(a) => {
+              saveAvailability(a)
+              setEditingFree(false)
+            }}
+            onClose={() => setEditingFree(false)}
+          />
+        )}
 
         {showSettings && (
           <SettingsSheet

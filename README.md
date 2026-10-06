@@ -23,29 +23,29 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
-- **Explore | Library** toggle in the top bar. In Library mode the left panel swaps the subject
-  list for **Library · Paths · Schedule**, and each opens out in columns like Explore. In a
-  smaller window the oldest columns fold into slim strips (tap one to open it), so nothing
-  scrolls sideways. The top bar and the panel switch stay in the same place in both modes; the
-  switch (Slim / Compact / Wide) also sets the Library, Paths and Schedule columns.
-- **Library** browses like Explore: subject → branch → course → chapter columns (only where
-  you've saved something, with counts), then that chapter's highlights, lectures and star.
-  Search, type and colour filters still apply; **Sort → By colour** groups highlights by bucket.
-  **+ Path** on a chapter (or a whole course) adds it to a path.
-- **Paths** — a sequential, goal-specific course. **✦ New path with AI**: describe the goal,
-  optionally paste the assignment / rubric and attach photos or PDFs, set a due date. The
-  planner (`google/gemini-3.8-flash`, reads images and PDFs) sees your whole tree and drafts
-  subject › branch › course › chapter steps with study time and what to focus on; the preview
-  marks each step "In your library" or new. **Create** reuses matches and generates anything
-  missing the way Explore does (full catalog / syllabus), so Explore keeps filling in. Steps
-  can be reordered, re-timed, removed, ticked off; tap one to open the chapter.
-- **Schedule** — tell it when you're free in plain words (the AI turns that into weekly blocks
-  and one-off busy days) or set blocks by hand. Your paths' unfinished chapters are laid into
-  that time, earliest due date first, long chapters split across blocks. Columns: Week / Month /
-  Year → the days with study planned → that day's sessions (Year: month → day → sessions).
-  It re-plans itself whenever you tick something off, fall behind or change availability, and
-  warns when a path won't finish by its due date. Google Calendar can replace manual
-  availability later.
+- **Explore | Library | Paths** switch in the top bar; the top bar and the panel switch stay put.
+  - **Library** works like Explore, but only with what you've saved: your saved subjects sit
+    in the left panel (same A–Z / Newest / Custom sort), each opens into branch → course →
+    chapter columns, then that chapter's highlights, lectures and star. **+ Path** on a chapter
+    or a whole course adds it to a path.
+  - **Paths** mode: the left panel holds **Paths** and **Schedule**, plus a small
+    **When I'm free** button.
+- **Paths** — **Scheduled** and **Archive**. New paths (AI-drafted or empty) land in the Archive
+  to look through; **📅 Schedule this path** puts one in the plan, **Move to Archive** takes it
+  out. ✦ **New path with AI**: describe the goal, optionally paste the assignment and attach
+  photos/PDFs; the planner (`google/gemini-3.8-flash`) drafts subject › branch › course › chapter
+  steps with study time; the preview marks each step "In your library" or new; **Create** reuses
+  matches and generates anything missing the way Explore does.
+- **Timing** per scheduled path: **ASAP**, **By a date** or **No rush** (no date needed), plus
+  **🔥 Pressing**. Priority for the earliest free time: Pressing → ASAP → By a date (earliest
+  first) → No rush. A dated path that would miss its date is promoted to Pressing automatically
+  and pushes the others back; each path shows its planned finish.
+- **Schedule** — free time from plain words (AI → weekly blocks + busy days) or by hand. Columns:
+  Week / Month / Year → days with study planned → that day's sessions. Re-plans whenever you tick
+  something off, fall behind or change anything. When it doesn't fit: **Shorten evenly** (smallest
+  even cut, never under 15 min a chapter) or **✦ Make it fit with AI** (proposes shorter
+  chapters, drops, or a timing change, with reasons; you Apply or not). Timing / Pressing are
+  kept in the synced prefs (`pathMeta`).
 - **Text size** A / A+ / A++ lives in Settings (this device).
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.

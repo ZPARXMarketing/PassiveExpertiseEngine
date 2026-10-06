@@ -2,9 +2,22 @@ import { useEffect, useMemo, useState } from 'react'
 import { Strip, useFit } from './fit.tsx'
 import type { PanelWidth } from './PanelWidth.tsx'
 import { generate, type Settings } from './generate.ts'
-import { parseAvailability } from './parse.ts'
+import { parseAvailability, parseFit, type FitChange } from './parse.ts'
 import { hours } from './Paths.tsx'
-import { blocksOn, dateKey, planSchedule, toMin, weeklyMinutes, type Session } from './schedule.ts'
+import {
+  blocksOn,
+  dateKey,
+  freeMinutesUntil,
+  shrinkToFit,
+  timingOf,
+  toMin,
+  weeklyMinutes,
+  type PathMeta,
+  type PathOutlook,
+  type Session,
+  type Timing,
+} from './schedule.ts'
+import type { NewPath } from './store.ts'
 import { chainIds, type Availability, type FreeBlock, type Path, type TreeNode } from './types.ts'
 
 type View = 'week' | 'month' | 'year'
@@ -21,6 +34,12 @@ interface Props {
   onToggleDone: (nodeId: string) => void
   onGoPaths: () => void
   panelWidth: PanelWidth
+  /** the plan (worked out once by the app, shared with Paths) */
+  plan: { sessions: Session[]; outlook: PathOutlook[] }
+  meta: PathMeta
+  onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
+  onSave: (p: NewPath) => Promise<Path>
+  onEditFree: () => void
 }
 
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
@@ -37,13 +56,12 @@ export function Schedule(p: Props) {
   const [anchor, setAnchor] = useState(() => new Date())
   const [month, setMonth] = useState('')
   const [day, setDay] = useState('')
-  const [editing, setEditing] = useState(false)
   const today = dateKey(new Date())
   // like Explore: columns that don't fit fold into strips, oldest first (tap one to open it)
   const [keep, setKeep] = useState(-1)
   useEffect(() => setKeep(-1), [view, month, day])
 
-  const { sessions, outlook } = useMemo(() => planSchedule(paths, done, availability), [paths, done, availability])
+  const { sessions, outlook } = p.plan
   const byDate = useMemo(() => {
     const m = new Map<string, Session[]>()
     for (const s of sessions) m.set(s.date, [...(m.get(s.date) ?? []), s])
@@ -153,12 +171,6 @@ export function Schedule(p: Props) {
                 </li>
               )
             })}
-            <li className="tile-wrap">
-              <button className="tile" onClick={() => setEditing(true)}>
-                <span className="tile-title">🕒 When I'm free</span>
-                <span className="tile-sum">{noTime ? 'Not set yet' : `${hours(weeklyMinutes(availability))} a week`}</span>
-              </button>
-            </li>
           </ol>
           {!live.length && (
             <div className="sched-hint">
@@ -171,7 +183,7 @@ export function Schedule(p: Props) {
           {!!live.length && noTime && (
             <div className="sched-hint">
               <p className="sheet-note">Tell it when you can study and your paths get planned into that time.</p>
-              <button className="btn-neon" onClick={() => setEditing(true)}>
+              <button className="btn-neon" onClick={p.onEditFree}>
                 Set my free time
               </button>
             </div>
@@ -186,18 +198,22 @@ export function Schedule(p: Props) {
                     <i className="path-dot" />
                     <span>
                       <b>{x.title}</b>
+                      {o.pressing && ' 🔥'}
                       {o.unplaced
                         ? o.finish
-                          ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}. Add free time or trim steps.`
-                          : ` — none of it fits your free time yet. Add more free time.`
+                          ? ` — ${hours(o.unplaced)} still won't fit${x.due ? ` (due ${fmt(x.due)})` : ''}.`
+                          : ` — none of it fits your free time yet.`
                         : o.late
-                          ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}. Add free time or move the date.`
-                          : ` — on track, done ${fmt(o.finish)}${x.due ? ` (due ${fmt(x.due)})` : ''}.`}
+                          ? ` — finishes ${fmt(o.finish)}, after it's due ${fmt(x.due!)}.`
+                          : ` — ${o.timing === 'none' ? 'no rush, ' : ''}done ${fmt(o.finish)}${o.timing === 'date' && x.due ? ` (due ${fmt(x.due)})` : ''}${o.promoted ? ', moved ahead to make its date' : ''}.`}
                     </span>
                   </li>
                 )
               })}
             </ul>
+          )}
+          {!noTime && outlook.some((o) => o.late || o.unplaced) && (
+            <FitBox paths={paths} done={done} availability={availability} meta={p.meta} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
           )}
         </section>
         )}
@@ -287,17 +303,6 @@ export function Schedule(p: Props) {
         )}
       </div>
 
-      {editing && (
-        <AvailabilityEditor
-          settings={p.settings}
-          value={availability}
-          onSave={(a) => {
-            p.onAvailability(a)
-            setEditing(false)
-          }}
-          onClose={() => setEditing(false)}
-        />
-      )}
     </main>
   )
 }
@@ -347,7 +352,7 @@ function SessionCard({
 }
 
 /** Say it in words (the AI turns it into blocks) or set blocks by hand. */
-function AvailabilityEditor({
+export function AvailabilityEditor({
   settings,
   value,
   onSave,
@@ -471,6 +476,143 @@ function AvailabilityEditor({
         </div>
         <p className="sheet-note">Google Calendar can replace this later.</p>
       </div>
+    </div>
+  )
+}
+
+/**
+ * When the plan doesn't fit: shorten every chapter evenly (instant), or let the AI propose
+ * smarter changes for you to approve (shorten, drop, change a path's timing).
+ */
+function FitBox({
+  paths,
+  done,
+  availability,
+  meta,
+  nodes,
+  settings,
+  onSave,
+  onMeta,
+}: {
+  paths: Path[]
+  done: Set<string>
+  availability: Availability
+  meta: PathMeta
+  nodes: Record<string, TreeNode>
+  settings: Settings
+  onSave: (p: NewPath) => Promise<Path>
+  onMeta: (id: string, fields: { timing?: Timing; pressing?: boolean }) => void
+}) {
+  const live = paths.filter((x) => !x.archived && x.steps.length)
+  const shrink = useMemo(() => shrinkToFit(paths, done, availability, meta), [paths, done, availability, meta])
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState('')
+  const [proposal, setProposal] = useState<{ summary: string; changes: FitChange[] } | null>(null)
+  const title = (id: string) => nodes[id]?.title ?? 'a chapter'
+
+  const applyShrink = async () => {
+    if (!shrink) return
+    for (const x of live) if (shrink.steps[x.id]) await onSave({ ...x, steps: shrink.steps[x.id] })
+  }
+
+  const askAI = async () => {
+    setBusy(true)
+    setError('')
+    setProposal(null)
+    try {
+      const today = dateKey(new Date())
+      const lines = [`Today: ${today}. Free time: ${hours(weeklyMinutes(availability))} a week.`, '']
+      live.forEach((x, i) => {
+        const timing = timingOf(x, meta)
+        const left = x.steps.filter((s) => !done.has(s.node_id)).reduce((t, s) => t + s.minutes, 0)
+        const room = timing === 'date' && x.due ? `, free time before then: ${hours(freeMinutesUntil(availability, x.due))}` : ''
+        lines.push(
+          `Path ${i + 1}: "${x.title}"${x.goal ? ` (goal: ${x.goal})` : ''} — ${timing === 'date' ? `due ${x.due}` : timing === 'asap' ? 'ASAP' : 'no rush'}${meta[x.id]?.pressing ? ', marked pressing' : ''}; still to do: ${hours(left)}${room}`,
+        )
+        x.steps.forEach((s, k) => {
+          if (!done.has(s.node_id)) lines.push(`  ${i + 1}.${k + 1} ${title(s.node_id)} — ${s.minutes} min${s.note ? ` — ${s.note}` : ''}`)
+        })
+      })
+      const { text } = await generate({ kind: 'fit', trail: ['Schedule'], material: lines.join('\n').slice(0, 24000) }, settings)
+      const out = parseFit(text)
+      if (!out.changes.length) throw new Error('No changes came back. Try again, or add free time.')
+      setProposal(out)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Something went wrong.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const applyAI = async () => {
+    if (!proposal) return
+    for (const [i, x] of live.entries()) {
+      const mine = proposal.changes.filter((c) => c.path === i + 1)
+      if (!mine.length) continue
+      const drop = new Set(mine.filter((c) => c.kind === 'drop').map((c) => (c as { step: number }).step))
+      const steps = x.steps
+        .map((s, k) => {
+          const m = mine.find((c) => c.kind === 'min' && c.step === k + 1) as { minutes: number } | undefined
+          return m ? { ...s, minutes: m.minutes } : s
+        })
+        .filter((_, k) => !drop.has(k + 1))
+      const t = mine.find((c) => c.kind === 'timing') as { timing: Timing; due: string } | undefined
+      await onSave({ ...x, steps, ...(t ? { due: t.timing === 'date' ? t.due : null } : {}) })
+      if (t) onMeta(x.id, { timing: t.timing })
+    }
+    setProposal(null)
+  }
+
+  const describe = (c: FitChange) => {
+    const x = live[c.path - 1]
+    if (!x) return ''
+    if (c.kind === 'timing') return `${x.title}: ${c.timing === 'date' ? `due ${c.due}` : c.timing === 'asap' ? 'ASAP' : 'no rush'}`
+    const s = x.steps[c.step - 1]
+    if (!s) return ''
+    return c.kind === 'min' ? `${title(s.node_id)}: ${s.minutes} → ${c.minutes} min` : `Drop ${title(s.node_id)} (${x.title})`
+  }
+
+  return (
+    <div className="fit-box">
+      <h4>Make it fit</h4>
+      {shrink && shrink.factor < 1 ? (
+        <p>
+          Shorten every chapter by about {Math.round((1 - shrink.factor) * 100)}% (none under 15 min) and it all fits.{' '}
+          <button className="btn-ghost" onClick={() => void applyShrink()}>
+            Shorten evenly
+          </button>
+        </p>
+      ) : !shrink ? (
+        <p className="muted">Even at 15 min a chapter it won’t fit. Add free time, or let the AI choose what to drop.</p>
+      ) : null}
+      <button className="btn-neon" disabled={busy} onClick={() => void askAI()}>
+        {busy ? 'Thinking…' : '✦ Make it fit with AI'}
+      </button>
+      {error && <div className="error">{error}</div>}
+      {proposal && (
+        <div className="fit-proposal">
+          {proposal.summary && <p>{proposal.summary}</p>}
+          <ul>
+            {proposal.changes.map((c, i) => {
+              const d = describe(c)
+              return d ? (
+                <li key={i}>
+                  <b>{d}</b>
+                  {c.why && <span className="muted"> — {c.why}</span>}
+                </li>
+              ) : null
+            })}
+          </ul>
+          <div className="row-line">
+            <button className="btn-neon" onClick={() => void applyAI()}>
+              Apply
+            </button>
+            <button className="btn-ghost" onClick={() => setProposal(null)}>
+              No thanks
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

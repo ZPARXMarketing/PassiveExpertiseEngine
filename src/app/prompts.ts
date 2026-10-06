@@ -27,6 +27,7 @@ export type GenKind =
   | 'visual'
   | 'path'
   | 'availability'
+  | 'fit'
 
 const KINDS: GenKind[] = [
   'branches',
@@ -42,6 +43,7 @@ const KINDS: GenKind[] = [
   'visual',
   'path',
   'availability',
+  'fit',
 ]
 
 /** A file the learner attached (photo or PDF of the assignment), as a data: URL. */
@@ -286,6 +288,21 @@ WEEKLY: <day> | <HH:MM start> | <HH:MM end>     (repeats every week)
 DATE: <YYYY-MM-DD> | <HH:MM start> | <HH:MM end>  (a one-off free block; replaces that day's weekly blocks)
 BUSY: <YYYY-MM-DD>                                (not free at all that day)`,
   },
+  fit: {
+    maxTokens: 1500,
+    temperature: 0.2,
+    system: `A learner's study plan does not fit their free time. Propose the fewest changes that
+make it fit while protecting what matters most for each goal. You may: shorten a chapter
+(never below 15 minutes), drop a chapter that matters least for its goal, or change a
+path's timing: asap, date (with a due date) or none (no rush). Prefer shortening over
+dropping, and touch "no rush" paths before dated ones. Never move a due date the learner
+set unless nothing else works, and say so. Plain text, no preamble. Lines:
+
+SUMMARY: <one sentence: what changes and why it now fits>
+MIN: <path#>.<step#> | <new minutes> | <why>
+DROP: <path#>.<step#> | <why>
+TIMING: <path#> | <asap|date|none> | <YYYY-MM-DD or empty> | <why>`,
+  },
   fix: {
     maxTokens: 4000,
     temperature: 0.2,
@@ -308,6 +325,7 @@ function userPrompt(req: GenRequest): string {
       req.attachments?.length ? `\n${req.attachments.length} attached file(s) follow: read them as the assignment.` : '',
       `\nThe learner's library (subject | branch | course code | course | chapters):\n${req.inventory?.slice(0, 20000) || '(empty)'}`,
     ].join('\n')
+  if (req.kind === 'fit') return req.material ?? ''
   if (req.kind === 'availability') return `Today: ${req.today ?? ''}\n\nThe learner says:\n${req.material ?? ''}`
   const [subject, branch, course] = req.trail
   const lines = [`Subject: ${subject}`]

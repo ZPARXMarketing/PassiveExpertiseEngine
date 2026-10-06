@@ -314,3 +314,42 @@ export function parseAvailability(text: string): { weekly: { day: number; start:
   }
   return { weekly, overrides: [...byDate].map(([date, blocks]) => ({ date, blocks })) }
 }
+
+/* ---------------- "make it fit" proposals ---------------- */
+
+export type FitChange =
+  | { kind: 'min'; path: number; step: number; minutes: number; why: string }
+  | { kind: 'drop'; path: number; step: number; why: string }
+  | { kind: 'timing'; path: number; timing: 'asap' | 'date' | 'none'; due: string; why: string }
+
+/** SUMMARY / MIN / DROP / TIMING lines (see the "fit" prompt); numbers are 1-based. */
+export function parseFit(text: string): { summary: string; changes: FitChange[] } {
+  const out: { summary: string; changes: FitChange[] } = { summary: '', changes: [] }
+  const ref = (r: string) => {
+    const m = r.trim().match(/^(\d+)\.(\d+)$/)
+    return m ? [Number(m[1]), Number(m[2])] : null
+  }
+  for (const raw of text.split('\n')) {
+    const l = clean(raw)
+    const m = l.match(/^(SUMMARY|MIN|DROP|TIMING)\s*:\s*(.*)$/i)
+    if (!m) continue
+    const p = m[2].split('|').map((x) => x.trim())
+    const tag = m[1].toUpperCase()
+    if (tag === 'SUMMARY') out.summary = m[2].slice(0, 400)
+    else if (tag === 'MIN') {
+      const r = ref(p[0])
+      const minutes = Math.round(Number(p[1]))
+      if (r && minutes >= 15 && minutes <= 600) out.changes.push({ kind: 'min', path: r[0], step: r[1], minutes, why: (p[2] ?? '').slice(0, 300) })
+    } else if (tag === 'DROP') {
+      const r = ref(p[0])
+      if (r) out.changes.push({ kind: 'drop', path: r[0], step: r[1], why: (p[1] ?? '').slice(0, 300) })
+    } else {
+      const path = Number(p[0])
+      const timing = (p[1] ?? '').toLowerCase()
+      const due = /^\d{4}-\d{2}-\d{2}$/.test(p[2] ?? '') ? p[2] : ''
+      if (path >= 1 && (timing === 'asap' || timing === 'date' || timing === 'none') && (timing !== 'date' || due))
+        out.changes.push({ kind: 'timing', path, timing, due, why: (p[3] ?? '').slice(0, 300) })
+    }
+  }
+  return out
+}

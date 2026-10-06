@@ -3884,3 +3884,345 @@ mark.hl-active {
 .rundown-title {
   grid-area: title;
 }
+
+/* ---------- Cal: year / month / week together ---------- */
+.cal-view {
+  overflow-y: auto;
+}
+.cal-stack {
+  display: grid;
+  gap: 14px;
+  padding: 14px 16px 40px;
+  max-width: 1200px;
+}
+.cal-stack .cal-warn,
+.cal-stack .cal-kept {
+  margin: 0;
+}
+.cal-stack .rundown {
+  max-width: none;
+  width: auto;
+}
+.cal-card {
+  padding: 14px 16px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  min-width: 0;
+}
+.cal-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.cal-card-title {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  text-align: left;
+}
+.cal-card-title h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 18px;
+}
+.cal-card-title .muted {
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.dim {
+  opacity: 0.22;
+}
+
+/* year: one bar per path */
+.gantt {
+  display: grid;
+  gap: 6px;
+}
+.gantt-months,
+.gantt-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 160px) 1fr;
+  gap: 10px;
+  align-items: center;
+}
+.gantt-months > div {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+}
+.gantt-months button {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+  padding: 2px 0;
+  border-radius: 6px;
+}
+.gantt-months button.on {
+  color: var(--neon);
+  background: var(--neon-soft);
+}
+.gantt-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gantt-track {
+  position: relative;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.gantt-grid {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+}
+.gantt-today {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: var(--neon);
+}
+.gantt-bar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 4px;
+  background: var(--pc, var(--neon));
+}
+.gantt-late {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 4px;
+  border: 2px solid var(--danger);
+  background: repeating-linear-gradient(45deg, var(--danger-soft) 0 4px, transparent 4px 8px);
+}
+.gantt-due {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%) rotate(45deg);
+  background: var(--pc, var(--text));
+  border: 2px solid var(--bg);
+}
+.gantt-due.late {
+  background: var(--danger);
+}
+
+/* year expanded: weekly load */
+.load {
+  margin-top: 14px;
+}
+.load-legend {
+  font-size: 12px;
+  color: var(--text-faint);
+  margin-bottom: 6px;
+}
+.load-free-key {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--surface-3);
+  vertical-align: middle;
+}
+.load-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 90px;
+}
+.load-week {
+  position: relative;
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  min-width: 0;
+}
+.load-free {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--surface-3);
+}
+.load-stack {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column-reverse;
+  border-radius: 2px;
+  overflow: hidden;
+}
+.load-stack i {
+  display: block;
+  min-height: 1px;
+}
+.load-week.on {
+  outline: 1px solid var(--neon);
+  outline-offset: 1px;
+}
+
+/* month grid */
+.mgrid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.mgrid-head {
+  font-size: 11px;
+  text-align: center;
+  color: var(--text-faint);
+}
+.mcell {
+  min-height: 64px;
+  padding: 5px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  min-width: 0;
+}
+.mcell.busy {
+  background: transparent;
+}
+.mcell.past {
+  opacity: 0.5;
+}
+.mcell.inweek {
+  border-color: var(--border-strong);
+  background: var(--surface-3);
+}
+.mcell.today {
+  border-color: var(--neon);
+}
+.mcell.clash {
+  border: 2px solid var(--danger);
+}
+.mcell-num {
+  font-size: 12px;
+  font-weight: 600;
+}
+.mcell-bar {
+  display: block;
+  height: 5px;
+  border-radius: 3px;
+  min-width: 6px;
+}
+.mcell-due {
+  font-size: 10px;
+  font-weight: 700;
+}
+.mcell-sum {
+  margin-top: auto;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+
+/* week: sessions by time of day */
+.wgrid {
+  display: grid;
+  grid-template-columns: 44px repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.wgrid-axis {
+  position: relative;
+  margin-top: 22px;
+}
+.wgrid-axis span {
+  position: absolute;
+  right: 4px;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-faint);
+}
+.wday {
+  min-width: 0;
+}
+.wday-head {
+  height: 20px;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-dim);
+}
+.wday.today .wday-head {
+  color: var(--neon);
+}
+.wday-due {
+  margin-left: 3px;
+}
+.wday-body {
+  position: relative;
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+.wfree {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 6px;
+  background: repeating-linear-gradient(135deg, var(--surface-3) 0 6px, transparent 6px 12px);
+}
+.wsess {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  padding: 3px 5px;
+  border-radius: 6px;
+  border-left: 3px solid var(--pc, var(--neon));
+  background: var(--surface);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+}
+.wsess b {
+  font-size: 11px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.wsess span {
+  font-size: 9.5px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.wsess.clash {
+  outline: 2px solid var(--danger);
+}
+.wsess.done {
+  opacity: 0.45;
+}
+.wsess.on {
+  box-shadow: var(--glow-card);
+}

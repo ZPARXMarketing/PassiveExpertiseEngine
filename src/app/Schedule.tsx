@@ -1,5 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Strip, useFit } from './fit.tsx'
+import { useMemo, useRef, useState } from 'react'
 import type { PanelWidth } from './PanelWidth.tsx'
 import { generate, type Settings } from './generate.ts'
 import { parseAvailability, parseFit, type FitChange } from './parse.ts'
@@ -55,180 +54,41 @@ interface Props {
   onFocusPath: (id: string) => void
 }
 
+const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
+const startOfWeek = (d: Date) => addDays(d, -d.getDay())
+const parse = (k: string) => new Date(`${k}T12:00:00`)
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
 /**
- * The study plan as one drill-down, like Explore: Years → Months → Days → Hours → Minutes
- * (the sessions inside that hour, to tick off or open). Opens on this year and month.
- * Re-plans itself whenever you finish something, fall behind, or change when you're free.
+ * Cal: every scheduled path together, at three linked zoom levels — the year (one bar per
+ * path, due dates, weekly load), the month (each day's time per path) and the week (each
+ * session at its time of day, free time shaded). Anything planned after its path's due date
+ * is a conflict and shows in red. Picking a month moves the month view, a day moves the
+ * week, a session opens its adjust controls. Re-plans on every change.
  */
 export function Schedule(p: Props) {
   const { paths, nodes, done, availability } = p
   const now = new Date()
   const today = dateKey(now)
-  const [year, setYear] = useState(today.slice(0, 4))
+  const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(today.slice(0, 7))
-  const [day, setDay] = useState('')
-  const [hour, setHour] = useState('')
-  // like Explore: columns that don't fit fold into strips, oldest first (tap one to open it)
-  const [keep, setKeep] = useState(-1)
-  useEffect(() => setKeep(-1), [year, month, day, hour])
+  const [week, setWeek] = useState(dateKey(startOfWeek(now)))
+  const [pick, setPick] = useState<Session | null>(null)
+  const [yearOpen, setYearOpen] = useState(false)
+  const weekRef = useRef<HTMLDivElement>(null)
 
   const { sessions, outlook } = p.plan
   const pathOf = (id: string) => paths.find((x) => x.id === id)
   const live = paths.filter((x) => !x.archived && x.steps.length)
   const sum = (list: Session[]) => hours(list.reduce((t, s) => t + s.minutes, 0))
   const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
-  const hasPlan = !!live.length && !noTime
-
-  /** sessions grouped by a key prefix: "2026", "2026-10", "2026-10-06" */
-  const within = (prefix: string) => sessions.filter((s) => s.date.startsWith(prefix))
-  const years = [...new Set([today.slice(0, 4), ...sessions.map((s) => s.date.slice(0, 4))])].sort()
-  const months = [...new Set(within(year).map((s) => s.date.slice(0, 7)))].sort()
-  const days = [...new Set(within(month).map((s) => s.date))].sort()
-  const daySessions = day ? within(day) : []
-  /** the hours a session touches: a 19:45–20:30 session shows under 19:00 and 20:00 */
-  const hoursOf = (s: Session) => {
-    const out: string[] = []
-    for (let h = Math.floor(toMin(s.start) / 60); h * 60 < toMin(s.end); h++) out.push(String(h).padStart(2, '0'))
-    return out
+  const focus = p.ordered.find((x) => x.id === p.focusPath)
+  /** a session planned after its path's due date */
+  const lateSession = (s: Session) => {
+    const x = pathOf(s.pathId)
+    return !!x && timingOf(x, p.meta) === 'date' && !!x.due && s.date > x.due
   }
-  const dayHours = [...new Set(daySessions.flatMap(hoursOf))].sort()
-  const hourSessions = hour ? daySessions.filter((s) => hoursOf(s).includes(hour)) : []
-
-  const monthName = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })
-  const dayName = (k: string) =>
-    k === today ? 'Today' : new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })
-  const hourName = (h: string) => new Date(`2000-01-01T${h}:00:00`).toLocaleTimeString(undefined, { hour: 'numeric' })
-  const dots = (list: Session[]) => (
-    <span className="month-dots">
-      {[...new Set(list.map((s) => s.pathId))].map((id) => (
-        <i key={id} style={{ background: pathOf(id)?.color }} />
-      ))}
-    </span>
-  )
-  const tile = (key: string, active: boolean, title: string, list: Session[], onClick: () => void, extra?: React.ReactNode) => (
-    <li key={key} className="tile-wrap">
-      <button className={`tile ${active ? 'active' : ''}`} onClick={onClick}>
-        <span className="tile-top">{dots(list)}</span>
-        <span className="tile-title">{title}</span>
-        <span className="tile-sum">{list.length ? `${list.length} session${list.length === 1 ? '' : 's'} · ${sum(list)}` : 'Nothing planned'}</span>
-        {extra}
-      </button>
-    </li>
-  )
-
-  const focus = paths.find((x) => x.id === p.focusPath && !x.archived)
-  const cols: { kicker: string; picked?: string; body: React.ReactNode; wide?: boolean }[] = []
-  if (hasPlan && !focus) {
-    cols.push({
-      kicker: 'Months',
-      picked: month.startsWith(year) ? monthName(month) : undefined,
-      body: (
-        <>
-          <header className="column-head">
-            <span className="column-kicker">Months</span>
-            <h2>{year}</h2>
-          </header>
-          {months.length ? (
-            <ol className="tiles">
-              {months.map((m) =>
-                tile(
-                  m,
-                  month === m,
-                  monthName(m),
-                  within(m),
-                  () => {
-                    setMonth(m)
-                    setDay('')
-                    setHour('')
-                  },
-                  live
-                    .filter((x) => timingOf(x, p.meta) === 'date' && x.due?.startsWith(m))
-                    .map((x) => (
-                      <span key={x.id} className="year-due" style={{ '--pc': x.color } as React.CSSProperties}>
-                        <i className="path-dot" /> {x.title} due {fmt(x.due!)}
-                      </span>
-                    )),
-                ),
-              )}
-            </ol>
-          ) : (
-            <p className="sheet-note">Nothing planned in {year}.</p>
-          )}
-        </>
-      ),
-    })
-  }
-  if (hasPlan && !focus) {
-    if (month.startsWith(year))
-      cols.push({
-        kicker: monthName(month),
-        picked: day ? dayName(day) : undefined,
-        body: (
-          <>
-            <header className="column-head">
-              <span className="column-kicker">Days</span>
-              <h2>
-                {monthName(month)} {year}
-              </h2>
-            </header>
-            {days.length ? (
-              <ol className="tiles">
-                {days.map((k) =>
-                  tile(k, day === k, dayName(k), within(k), () => {
-                    setDay(k)
-                    setHour('')
-                  }),
-                )}
-              </ol>
-            ) : (
-              <p className="sheet-note">Nothing planned this month.</p>
-            )}
-          </>
-        ),
-      })
-  }
-  if (hasPlan) {
-    if (day)
-      cols.push({
-        kicker: dayName(day),
-        picked: hour ? hourName(hour) : undefined,
-        body: (
-          <>
-            <header className="column-head">
-              <span className="column-kicker">Hours</span>
-              <h2>{dayName(day)}</h2>
-              <p className="column-desc">
-                Free {blocksOn(new Date(`${day}T12:00:00`), availability).map((b) => `${b.start}–${b.end}`).join(', ') || '—'} · {sum(daySessions)} planned
-              </p>
-            </header>
-            <ol className="tiles">
-              {dayHours.map((h) => {
-                const list = daySessions.filter((s) => hoursOf(s).includes(h))
-                return tile(h, hour === h, hourName(h), list, () => setHour(h))
-              })}
-            </ol>
-          </>
-        ),
-      })
-    if (day && hour)
-      cols.push({
-        kicker: hourName(hour),
-        wide: true,
-        picked: `${hourSessions.length} session${hourSessions.length === 1 ? '' : 's'}`,
-        body: (
-          <>
-            <header className="column-head">
-              <span className="column-kicker">Minutes · {sum(hourSessions)} planned</span>
-              <h2>
-                {dayName(day)}, {hourName(hour)}
-              </h2>
-            </header>
-            <HourBreakdown hour={hour} sessions={hourSessions} paths={paths} nodes={nodes} done={done} onSave={p.onSave} onOpen={p.onOpen} onToggleDone={p.onToggleDone} />
-          </>
-        ),
-      })
-  }
-  const { ref: colsRef, folded } = useFit([250, ...cols.map((c) => (c.wide ? 300 : 250))], keep, p.panelWidth)
+  const dim = (pathId: string) => (focus && focus.id !== pathId ? 'dim' : '')
 
   const problems = outlook.filter((o) => o.late || o.unplaced)
   const signature = `${p.ordered.map((x) => x.id).join(',')}|${problems.map((o) => o.pathId).join(',')}`
@@ -237,111 +97,375 @@ export function Schedule(p: Props) {
     if (!x) return ''
     if (o.unplaced && !o.finish) return `${x.title}: none of it fits your free time yet`
     if (o.unplaced) return `${x.title}: ${hours(o.unplaced)} doesn’t fit`
-    return `${x.title}: finishes ${fmt(o.finish)}, after it’s due ${fmt(x.due!)}`
+    const after = sessions.filter((s) => s.pathId === x.id && lateSession(s)).length
+    return `${x.title}: finishes ${fmt(o.finish)}, after it’s due ${fmt(x.due!)} (${after} session${after === 1 ? '' : 's'} past the date)`
+  }
+  const goWeek = (k: string) => {
+    setWeek(dateKey(startOfWeek(parse(k))))
+    setMonth(k.slice(0, 7))
+    setYear(Number(k.slice(0, 4)))
+    requestAnimationFrame(() => weekRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
   }
 
+  /* ---------- year ---------- */
+  const y0 = new Date(year, 0, 1).getTime()
+  const yLen = new Date(year + 1, 0, 1).getTime() - y0
+  const pos = (k: string) => Math.min(100, Math.max(0, ((parse(k).getTime() - y0) / yLen) * 100))
+  const inYear = (k: string) => k.startsWith(String(year))
+  /** weeks of the year with planned minutes per path, for the load chart */
+  const weeks = useMemo(() => {
+    const out: { start: string; byPath: Map<string, number>; total: number; free: number }[] = []
+    for (let d = startOfWeek(new Date(year, 0, 1)); d.getFullYear() <= year; d = addDays(d, 7)) {
+      const start = dateKey(d)
+      const days = Array.from({ length: 7 }, (_, i) => addDays(d, i))
+      const keys = new Set(days.map(dateKey))
+      const byPath = new Map<string, number>()
+      let total = 0
+      for (const s of sessions)
+        if (keys.has(s.date)) {
+          byPath.set(s.pathId, (byPath.get(s.pathId) ?? 0) + s.minutes)
+          total += s.minutes
+        }
+      const free = days.reduce((t, day) => t + blocksOn(day, availability).reduce((u, b) => u + Math.max(0, toMin(b.end) - toMin(b.start)), 0), 0)
+      out.push({ start, byPath, total, free })
+    }
+    return out
+  }, [sessions, availability, year])
+  const maxWeek = Math.max(60, ...weeks.map((w) => Math.max(w.total, w.free)))
+
+  /* ---------- month ---------- */
+  const [my, mm] = month.split('-').map(Number)
+  const first = new Date(my, mm - 1, 1)
+  const cells = [...Array<null>(first.getDay()).fill(null), ...Array.from({ length: new Date(my, mm, 0).getDate() }, (_, i) => dateKey(addDays(first, i)))]
+  const byDate = useMemo(() => {
+    const m = new Map<string, Session[]>()
+    for (const s of sessions) m.set(s.date, [...(m.get(s.date) ?? []), s])
+    return m
+  }, [sessions])
+  const dueOn = (k: string) => live.filter((x) => timingOf(x, p.meta) === 'date' && x.due === k)
+
+  /* ---------- week ---------- */
+  const weekDays = Array.from({ length: 7 }, (_, i) => dateKey(addDays(parse(week), i)))
+  const weekSessions = sessions.filter((s) => weekDays.includes(s.date))
+  const weekBlocks = weekDays.map((k) => blocksOn(parse(k), availability))
+  const span = [...weekBlocks.flat().map((b) => [toMin(b.start), toMin(b.end)]), ...weekSessions.map((s) => [toMin(s.start), toMin(s.end)])]
+  const from = span.length ? Math.floor(Math.min(...span.map((x) => x[0])) / 60) * 60 : 18 * 60
+  const to = span.length ? Math.ceil(Math.max(...span.map((x) => x[1])) / 60) * 60 : 22 * 60
+  const PX = 1.1 // pixels per minute in the week view
+
+  if (!live.length || noTime)
+    return (
+      <main className="explore schedule-view cal-view">
+        {p.narrowList && <div className="narrow-only cal-narrow">{p.narrowList}</div>}
+        <div className="lib-empty">
+          {!live.length ? (
+            <>
+              <h2>Nothing scheduled yet</h2>
+              <p>Open a path in Paths and tap “Schedule this path”. Its chapters get laid into your free time here.</p>
+              <button className="btn-neon" onClick={p.onGoPaths}>
+                Go to Paths
+              </button>
+            </>
+          ) : (
+            <>
+              <h2>When can you study?</h2>
+              <p>Tell it when you’re free and your scheduled paths get planned into that time.</p>
+              <button className="btn-neon" onClick={p.onEditFree}>
+                Set my free time
+              </button>
+            </>
+          )}
+        </div>
+      </main>
+    )
+
   return (
-    <main className="explore schedule-view">
+    <main className="explore schedule-view cal-view">
       {p.narrowList && <div className="narrow-only cal-narrow">{p.narrowList}</div>}
-      {!live.length ? (
-        <div className="lib-empty">
-          <h2>Nothing scheduled yet</h2>
-          <p>Schedule a path first: open one in Paths and tap “Schedule this path”. Its chapters get laid into your free time here.</p>
-          <button className="btn-neon" onClick={p.onGoPaths}>
-            Go to Paths
-          </button>
-        </div>
-      ) : noTime ? (
-        <div className="lib-empty">
-          <h2>When can you study?</h2>
-          <p>Tell it when you’re free and your scheduled paths get planned into that time.</p>
-          <button className="btn-neon" onClick={p.onEditFree}>
-            Set my free time
-          </button>
-        </div>
-      ) : (
-        problems.length > 0 &&
-        (p.ack === signature ? (
-          <p className="cal-kept">
-            Keeping your order: {problems.map(describe).join(' · ')}.{' '}
-            <button className="reveal" onClick={() => p.onAck('')}>
-              Review
-            </button>
-          </p>
-        ) : (
-          <div className="cal-warn" role="alert">
-            <h4>⚠ This order doesn’t fit</h4>
-            <ul>
-              {problems.map((o) => (
-                <li key={o.pathId}>{describe(o)}</li>
-              ))}
-            </ul>
-            <div className="cal-warn-actions">
-              <button className="btn-neon" onClick={() => p.onOrder(dueFirst(p.ordered, p.meta))}>
-                Put due dates first
+      <div className="cal-stack">
+        {problems.length > 0 &&
+          (p.ack === signature ? (
+            <p className="cal-kept">
+              Keeping your order: {problems.map(describe).join(' · ')}.{' '}
+              <button className="reveal" onClick={() => p.onAck('')}>
+                Review
               </button>
-              <button className="btn-ghost" onClick={() => p.onAck(signature)}>
-                Keep my order
-              </button>
+            </p>
+          ) : (
+            <div className="cal-warn" role="alert">
+              <h4>⚠ Conflicts</h4>
+              <ul>
+                {problems.map((o) => (
+                  <li key={o.pathId}>{describe(o)}</li>
+                ))}
+              </ul>
+              <div className="cal-warn-actions">
+                <button className="btn-neon" onClick={() => p.onOrder(dueFirst(p.ordered, p.meta))}>
+                  Put due dates first
+                </button>
+                <button className="btn-ghost" onClick={() => p.onAck(signature)}>
+                  Keep my order
+                </button>
+              </div>
+              <FitBox paths={paths} done={done} availability={availability} meta={p.meta} order={p.ordered.map((x) => x.id)} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
             </div>
-            <FitBox paths={paths} done={done} availability={availability} meta={p.meta} order={p.ordered.map((x) => x.id)} nodes={nodes} settings={p.settings} onSave={p.onSave} onMeta={p.onMeta} />
-          </div>
-        ))
-      )}
-      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
-        {hasPlan && focus ? (
-          folded[0] ? (
-            <Strip kicker="Rundown" picked={focus.title} onOpen={() => setKeep(0)} />
-          ) : (
-            <Rundown
-              path={focus}
-              sessions={sessions.filter((x) => x.pathId === focus.id)}
-              outlook={outlook.find((o) => o.pathId === focus.id)}
-              nodes={nodes}
-              meta={p.meta}
-              selected={`${day} ${hour}`}
-              onPick={(sess) => {
-                setYear(sess.date.slice(0, 4))
-                setMonth(sess.date.slice(0, 7))
-                setDay(sess.date)
-                setHour(sess.start.slice(0, 2))
-              }}
-              onClose={() => {
-                p.onFocusPath('')
-                setDay('')
-                setHour('')
-              }}
-            />
-          )
-        ) : hasPlan &&
-          (folded[0] ? (
-            <Strip kicker="Years" picked={year} onOpen={() => setKeep(0)} />
-          ) : (
-            <section className="column">
-              <header className="column-head">
-                <span className="column-kicker">Years</span>
-                <h2>Your plan</h2>
-              </header>
-              <ol className="tiles">
-                {years.map((y) =>
-                  tile(y, year === y, y, within(y), () => {
-                    setYear(y)
-                    setMonth(y === today.slice(0, 4) ? today.slice(0, 7) : (within(y)[0]?.date.slice(0, 7) ?? `${y}-01`))
-                    setDay('')
-                    setHour('')
-                  }),
-                )}
-              </ol>
-            </section>
           ))}
-        {cols.map((c, i) =>
-          folded[i + 1] ? (
-            <Strip key={c.kicker + i} kicker={c.kicker} picked={c.picked} onOpen={() => setKeep(i + 1)} />
-          ) : (
-            <section key={c.kicker + i} className={`column ${c.wide ? 'day-panel' : ''}`}>
-              {c.body}
-            </section>
-          ),
+
+        {focus && (
+          <Rundown
+            path={focus}
+            sessions={sessions.filter((x) => x.pathId === focus.id)}
+            outlook={outlook.find((o) => o.pathId === focus.id)}
+            nodes={nodes}
+            meta={p.meta}
+            selected={pick ? `${pick.date} ${pick.start.slice(0, 2)}` : ''}
+            onPick={(s) => {
+              goWeek(s.date)
+              setPick(s)
+            }}
+            onClose={() => p.onFocusPath('')}
+          />
+        )}
+
+        {/* ---------- YEAR ---------- */}
+        <section className={`cal-card ${yearOpen ? 'open' : ''}`}>
+          <header className="cal-card-head">
+            <button className="cal-card-title" onClick={() => setYearOpen((o) => !o)} aria-expanded={yearOpen}>
+              <span className="column-kicker">Year</span>
+              <h3>{year}</h3>
+              <span className="muted">{yearOpen ? 'Hide the weekly load ▴' : 'Show the full year ▾'}</span>
+            </button>
+            <span className="cal-nav">
+              <button className="icon-btn" onClick={() => setYear(year - 1)} aria-label="Previous year">
+                ‹
+              </button>
+              <button className="icon-btn" onClick={() => setYear(year + 1)} aria-label="Next year">
+                ›
+              </button>
+            </span>
+          </header>
+          <div className="gantt">
+            <div className="gantt-months">
+              <span />
+              <div>
+                {MONTHS.map((m, i) => {
+                  const k = `${year}-${String(i + 1).padStart(2, '0')}`
+                  return (
+                    <button key={m} className={month === k ? 'on' : ''} onClick={() => setMonth(k)}>
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            {p.ordered.map((x) => {
+              const mine = sessions.filter((s) => s.pathId === x.id)
+              const o = outlook.find((y) => y.pathId === x.id)
+              const firstS = mine[0]?.date
+              const lastS = mine[mine.length - 1]?.date
+              const dated = timingOf(x, p.meta) === 'date' && x.due
+              const lateFrom = dated && lastS && lastS > x.due! ? x.due! : ''
+              return (
+                <div key={x.id} className={`gantt-row ${dim(x.id)}`} style={{ '--pc': x.color } as React.CSSProperties}>
+                  <button className="gantt-label" onClick={() => p.onFocusPath(focus?.id === x.id ? '' : x.id)} title={x.title}>
+                    <i className="path-dot" /> {x.title}
+                  </button>
+                  <div className="gantt-track">
+                    {MONTHS.map((_, i) => (
+                      <i key={i} className="gantt-grid" style={{ left: `${(i / 12) * 100}%` }} />
+                    ))}
+                    {inYear(today) && <i className="gantt-today" style={{ left: `${pos(today)}%` }} />}
+                    {firstS && lastS && (firstS <= `${year}-12-31` && lastS >= `${year}-01-01`) && (
+                      <div
+                        className="gantt-bar"
+                        style={{ left: `${pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS)}%`, width: `${Math.max(0.8, pos(lastS) - pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS))}%` }}
+                        title={`${fmt(firstS)} → ${fmt(lastS)}`}
+                      />
+                    )}
+                    {lateFrom && inYear(lateFrom) && (
+                      <div className="gantt-late" style={{ left: `${pos(lateFrom)}%`, width: `${Math.max(0.8, pos(lastS!) - pos(lateFrom))}%` }} title="Past its due date" />
+                    )}
+                    {dated && inYear(x.due!) && <i className={`gantt-due ${o?.late ? 'late' : ''}`} style={{ left: `${pos(x.due!)}%` }} title={`Due ${fmt(x.due!)}`} />}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {yearOpen && (
+            <div className="load">
+              <div className="load-legend">
+                Hours per week, stacked by path · <span className="load-free-key" /> free time
+              </div>
+              <div className="load-bars">
+                {weeks.map((w) => (
+                  <button
+                    key={w.start}
+                    className={`load-week ${weekDays[0] === w.start ? 'on' : ''}`}
+                    onClick={() => goWeek(w.start)}
+                    title={`Week of ${fmt(w.start)}: ${hours(w.total)} of ${hours(w.free)} free`}
+                  >
+                    <i className="load-free" style={{ height: `${(w.free / maxWeek) * 100}%` }} />
+                    <span className="load-stack" style={{ height: `${(w.total / maxWeek) * 100}%` }}>
+                      {p.ordered
+                        .filter((x) => w.byPath.get(x.id))
+                        .map((x) => (
+                          <i key={x.id} className={dim(x.id)} style={{ flex: w.byPath.get(x.id), background: x.color }} />
+                        ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* ---------- MONTH ---------- */}
+        <section className="cal-card">
+          <header className="cal-card-head">
+            <div className="cal-card-title static">
+              <span className="column-kicker">Month</span>
+              <h3>{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
+              <span className="muted">{sum(sessions.filter((s) => s.date.startsWith(month)))} planned</span>
+            </div>
+            <span className="cal-nav">
+              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm - 2, 1)).slice(0, 7))} aria-label="Previous month">
+                ‹
+              </button>
+              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm, 1)).slice(0, 7))} aria-label="Next month">
+                ›
+              </button>
+            </span>
+          </header>
+          <div className="mgrid">
+            {DAY.map((d) => (
+              <span key={d} className="mgrid-head">
+                {d}
+              </span>
+            ))}
+            {cells.map((k, i) => {
+              if (!k) return <span key={`b${i}`} />
+              const list = byDate.get(k) ?? []
+              const dues = dueOn(k)
+              const clash = list.some(lateSession)
+              const free = blocksOn(parse(k), availability).length > 0
+              const per = p.ordered.map((x) => ({ x, m: list.filter((s) => s.pathId === x.id).reduce((t, s) => t + s.minutes, 0) })).filter((y) => y.m)
+              return (
+                <button
+                  key={k}
+                  className={`mcell ${k === today ? 'today' : ''} ${weekDays.includes(k) ? 'inweek' : ''} ${clash ? 'clash' : ''} ${free ? '' : 'busy'} ${k < today ? 'past' : ''}`}
+                  onClick={() => goWeek(k)}
+                >
+                  <span className="mcell-num">{Number(k.slice(8))}</span>
+                  {per.map(({ x, m }) => (
+                    <span key={x.id} className={`mcell-bar ${dim(x.id)}`} style={{ background: x.color, width: `${Math.min(100, (m / 120) * 100)}%` }} title={`${x.title}: ${hours(m)}`} />
+                  ))}
+                  {dues.map((x) => (
+                    <span key={x.id} className="mcell-due" style={{ color: x.color }} title={`${x.title} due`}>
+                      ◆ due
+                    </span>
+                  ))}
+                  {list.length > 0 && <span className="mcell-sum">{sum(list)}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* ---------- WEEK ---------- */}
+        <section className="cal-card" ref={weekRef as React.RefObject<HTMLElement>}>
+          <header className="cal-card-head">
+            <div className="cal-card-title static">
+              <span className="column-kicker">Week</span>
+              <h3>
+                {fmt(weekDays[0])} – {fmt(weekDays[6])}
+              </h3>
+              <span className="muted">
+                {sum(weekSessions)} planned of {hours(weekBlocks.flat().reduce((t, b) => t + toMin(b.end) - toMin(b.start), 0))} free
+              </span>
+            </div>
+            <span className="cal-nav">
+              <button className="icon-btn" onClick={() => goWeek(dateKey(addDays(parse(week), -7)))} aria-label="Previous week">
+                ‹
+              </button>
+              <button className="btn-ghost" onClick={() => goWeek(today)}>
+                Today
+              </button>
+              <button className="icon-btn" onClick={() => goWeek(dateKey(addDays(parse(week), 7)))} aria-label="Next week">
+                ›
+              </button>
+            </span>
+          </header>
+          <div className="wgrid">
+            <div className="wgrid-axis" style={{ height: (to - from) * PX }}>
+              {Array.from({ length: (to - from) / 60 + 1 }, (_, i) => (
+                <span key={i} style={{ top: i * 60 * PX }}>
+                  {fromMin(from + i * 60)}
+                </span>
+              ))}
+            </div>
+            {weekDays.map((k, d) => (
+              <div key={k} className={`wday ${k === today ? 'today' : ''}`}>
+                <div className="wday-head">
+                  {DAY[parse(k).getDay()]} {Number(k.slice(8))}
+                  {dueOn(k).map((x) => (
+                    <span key={x.id} className="wday-due" style={{ color: x.color }} title={`${x.title} due`}>
+                      ◆
+                    </span>
+                  ))}
+                </div>
+                <div className="wday-body" style={{ height: (to - from) * PX }}>
+                  {weekBlocks[d].map((b, i) => (
+                    <i key={i} className="wfree" style={{ top: (toMin(b.start) - from) * PX, height: (toMin(b.end) - toMin(b.start)) * PX }} />
+                  ))}
+                  {weekSessions
+                    .filter((s) => s.date === k)
+                    .map((s, i) => {
+                      const x = pathOf(s.pathId)
+                      return (
+                        <button
+                          key={i}
+                          className={`wsess ${lateSession(s) ? 'clash' : ''} ${done.has(s.nodeId) ? 'done' : ''} ${dim(s.pathId)} ${pick && pick.date === s.date && pick.start === s.start ? 'on' : ''}`}
+                          style={{ top: (toMin(s.start) - from) * PX, height: Math.max(16, s.minutes * PX - 2), '--pc': x?.color } as React.CSSProperties}
+                          onClick={() => setPick(s)}
+                          title={`${nodes[s.nodeId]?.title ?? ''} · ${s.start}–${s.end}`}
+                        >
+                          <b>{nodes[s.nodeId]?.title ?? '…'}</b>
+                          <span>
+                            {s.start} · {s.minutes}m
+                          </span>
+                        </button>
+                      )
+                    })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {pick && (
+          <section className="cal-card">
+            <header className="cal-card-head">
+              <div className="cal-card-title static">
+                <span className="column-kicker">Adjust</span>
+                <h3>
+                  {fmt(pick.date)}, {pick.start.slice(0, 2)}:00 hour
+                </h3>
+              </div>
+              <button className="reveal" onClick={() => setPick(null)}>
+                Close
+              </button>
+            </header>
+            <HourBreakdown
+              hour={pick.start.slice(0, 2)}
+              sessions={(byDate.get(pick.date) ?? []).filter((s) => toMin(s.start) < (Number(pick.start.slice(0, 2)) + 1) * 60 && toMin(s.end) > Number(pick.start.slice(0, 2)) * 60)}
+              paths={paths}
+              nodes={nodes}
+              done={done}
+              onSave={p.onSave}
+              onOpen={p.onOpen}
+              onToggleDone={p.onToggleDone}
+            />
+          </section>
         )}
       </div>
     </main>

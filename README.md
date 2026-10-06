@@ -43,12 +43,15 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Timing** per scheduled path: **ASAP**, **By a date** or **No rush**. The Cal order decides
   priority; timing only decides where a newly scheduled path joins it (ASAP on top, dated by due
   date, No rush at the bottom) and which dates it must make.
-- **Cal plan** — free time from plain words (AI → weekly blocks + busy days) or by hand. One
-  drill-down: **Years → Months → Days → Hours → Minutes**; the last column is a minute-by-minute
-  timeline of that hour (chapters in path colours, free gaps) with controls per chapter: study
-  time −5/+5, earlier/later in its path, done, open. Re-plans on every change. When it doesn't
-  fit: **Shorten evenly** (15-min floor) or **✦ Make it fit with AI** (proposed trims, drops or
-  timing changes you Apply or not). Timing / Pressing / Archived live in synced prefs (`pathMeta`).
+- **Cal plan** — every scheduled path together at three linked zoom levels: **Year** (one bar per
+  path from first to last session, ◆ due dates, the part past a due date in red; tap to expand
+  the weekly load: hours per week stacked by path against free time), **Month** (each day's time
+  per path, due dates, red outline on days with work past a due date) and **Week** (sessions at
+  their time of day over shaded free time; tap one to adjust: −5/+5 min, earlier/later, done,
+  open). A month in the year moves the month view; a day moves the week. Tapping a path on the
+  left opens its rundown and dims the others. Free time: plain words (AI → weekly blocks + busy
+  days) or by hand. When it doesn't fit: **Shorten evenly** (15-min floor) or **✦ Make it fit
+  with AI**.
 - **Narrow windows** (split view): the page never scrolls sideways; Library gets a Subject
   dropdown, Paths mode a Paths | Schedule switch; older columns fold into strips.
 - **Text size** A / A+ / A++ lives in Settings (this device).

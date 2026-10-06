@@ -36,7 +36,9 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
     steps (`google/gemini-3.8-flash`); **Create** reuses matches and generates anything missing.
   - **Cal** — the scheduled paths in **priority order** (top first) with their status (on track,
     late, doesn't fit, covered by a path above) and **When I'm free** at the bottom. **🔒 Reorder**
-    unlocks dragging; the plan re-flows at once. If the order makes something late, a warning
+    unlocks dragging; the plan re-flows at once. Tap a path for its **rundown** (time planned,
+    first → last session vs. its due date, every session by day); tap a session to open that
+    hour and adjust it; **× full plan** goes back. If the order makes something late, a warning
     offers **Put due dates first**, **Keep my order** (accept it), or **Make it fit**.
 - **Timing** per scheduled path: **ASAP**, **By a date** or **No rush**. The Cal order decides
   priority; timing only decides where a newly scheduled path joins it (ASAP on top, dated by due

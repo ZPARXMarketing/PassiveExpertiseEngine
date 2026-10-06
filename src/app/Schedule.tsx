@@ -50,6 +50,9 @@ interface Props {
   onAck: (signature: string) => void
   /** the priority list, shown on top when the left panel is tucked away (narrow windows) */
   narrowList?: React.ReactNode
+  /** a path picked in the Cal list: show its rundown instead of the full plan */
+  focusPath: string
+  onFocusPath: (id: string) => void
 }
 
 /**
@@ -113,8 +116,9 @@ export function Schedule(p: Props) {
     </li>
   )
 
+  const focus = paths.find((x) => x.id === p.focusPath && !x.archived)
   const cols: { kicker: string; picked?: string; body: React.ReactNode; wide?: boolean }[] = []
-  if (hasPlan) {
+  if (hasPlan && !focus) {
     cols.push({
       kicker: 'Months',
       picked: month.startsWith(year) ? monthName(month) : undefined,
@@ -153,6 +157,8 @@ export function Schedule(p: Props) {
         </>
       ),
     })
+  }
+  if (hasPlan && !focus) {
     if (month.startsWith(year))
       cols.push({
         kicker: monthName(month),
@@ -180,6 +186,8 @@ export function Schedule(p: Props) {
           </>
         ),
       })
+  }
+  if (hasPlan) {
     if (day)
       cols.push({
         kicker: dayName(day),
@@ -281,7 +289,31 @@ export function Schedule(p: Props) {
         ))
       )}
       <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
-        {hasPlan &&
+        {hasPlan && focus ? (
+          folded[0] ? (
+            <Strip kicker="Rundown" picked={focus.title} onOpen={() => setKeep(0)} />
+          ) : (
+            <Rundown
+              path={focus}
+              sessions={sessions.filter((x) => x.pathId === focus.id)}
+              outlook={outlook.find((o) => o.pathId === focus.id)}
+              nodes={nodes}
+              meta={p.meta}
+              selected={`${day} ${hour}`}
+              onPick={(sess) => {
+                setYear(sess.date.slice(0, 4))
+                setMonth(sess.date.slice(0, 7))
+                setDay(sess.date)
+                setHour(sess.start.slice(0, 2))
+              }}
+              onClose={() => {
+                p.onFocusPath('')
+                setDay('')
+                setHour('')
+              }}
+            />
+          )
+        ) : hasPlan &&
           (folded[0] ? (
             <Strip kicker="Years" picked={year} onOpen={() => setKeep(0)} />
           ) : (
@@ -734,11 +766,13 @@ export function CalList({
   outlook,
   onOrder,
   onOpenPath,
+  selected,
 }: {
   ordered: Path[]
   outlook: PathOutlook[]
   onOrder: (ids: string[]) => void
   onOpenPath: (id: string) => void
+  selected?: string
 }) {
   const [unlocked, setUnlocked] = useState(false)
   const [dragId, setDragId] = useState('')
@@ -787,7 +821,7 @@ export function CalList({
           return (
             <li
               key={x.id}
-              className={`cal-row ${dragId === x.id ? 'dragging' : ''}`}
+              className={`cal-row ${dragId === x.id ? 'dragging' : ''} ${selected === x.id ? 'on' : ''}`}
               style={{ '--pc': x.color } as React.CSSProperties}
               ref={(el) => {
                 if (el) rows.current.set(x.id, el)
@@ -824,5 +858,85 @@ export function CalList({
         })}
       </ol>
     </div>
+  )
+}
+
+/**
+ * One scheduled path, at a glance: how much is planned, when it starts and finishes against
+ * its due date, then every session by day. Tap a session to open that hour and adjust it.
+ */
+function Rundown({
+  path,
+  sessions,
+  outlook,
+  nodes,
+  meta,
+  selected,
+  onPick,
+  onClose,
+}: {
+  path: Path
+  sessions: Session[]
+  outlook?: PathOutlook
+  nodes: Record<string, TreeNode>
+  meta: PathMeta
+  selected: string
+  onPick: (s: Session) => void
+  onClose: () => void
+}) {
+  const byDay = new Map<string, Session[]>()
+  for (const s of sessions) byDay.set(s.date, [...(byDay.get(s.date) ?? []), s])
+  const total = sessions.reduce((t, s) => t + s.minutes, 0)
+  const timing = timingOf(path, meta)
+  return (
+    <section className="column rundown" style={{ '--pc': path.color } as React.CSSProperties}>
+      <header className="column-head">
+        <div className="column-ctrl">
+          <span className="column-kicker">Rundown</span>
+          <button className="reveal" onClick={onClose}>
+            × full plan
+          </button>
+        </div>
+        <h2>{path.title}</h2>
+        <div className="rundown-stats">
+          <span>
+            <b>{hours(total)}</b> planned
+          </span>
+          <span>
+            <b>{sessions.length}</b> session{sessions.length === 1 ? '' : 's'}
+          </span>
+          <span>
+            <b>{byDay.size}</b> day{byDay.size === 1 ? '' : 's'}
+          </span>
+        </div>
+        <p className={`path-outlook ${outlook?.late ? 'late' : ''}`}>
+          {!sessions.length
+            ? outlook?.covered
+              ? 'Its chapters are already in a path above, so nothing extra is planned.'
+              : 'Nothing planned yet: add free time, or move it up the list.'
+            : `${fmt(sessions[0].date)} → ${fmt(sessions[sessions.length - 1].date)}`}
+          {timing === 'date' && path.due ? ` · due ${fmt(path.due)}${outlook?.late ? ' (late)' : ''}` : timing === 'asap' ? ' · ASAP' : ' · no rush'}
+          {outlook?.unplaced ? ` · ${hours(outlook.unplaced)} doesn’t fit` : ''}
+        </p>
+      </header>
+      {[...byDay].map(([d, list]) => (
+        <div key={d} className="rundown-day">
+          <div className="rundown-date">
+            {fmt(d)} <span className="muted">{hours(list.reduce((t, s) => t + s.minutes, 0))}</span>
+          </div>
+          {list.map((s, i) => (
+            <button key={i} className={`rundown-item ${selected === `${s.date} ${s.start.slice(0, 2)}` ? 'on' : ''}`} onClick={() => onPick(s)}>
+              <span className="rundown-time">
+                {s.start}–{s.end}
+              </span>
+              <span className="rundown-title">{nodes[s.nodeId]?.title ?? '…'}</span>
+              <span className="rundown-min">
+                {s.minutes} min{s.part ? ` · ${s.part}` : ''}
+              </span>
+            </button>
+          ))}
+        </div>
+      ))}
+    </section>
   )
 }

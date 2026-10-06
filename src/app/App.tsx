@@ -123,6 +123,8 @@ export default function App() {
   /** Cal: priority order of scheduled paths (top first) and "keep my order anyway" (synced) */
   const [pathOrder, setPathOrder] = useState<string[]>([])
   const [calAck, setCalAck] = useState('')
+  /** Cal: the path whose rundown is open ('' = the full plan) */
+  const [calPath, setCalPath] = useState('')
   /** Library mode: the subject picked in the left panel */
   const [libSubject, setLibSubject] = useState('')
   /** Paths: which list is open, and each path's timing / pressing (synced pref) */
@@ -942,10 +944,10 @@ export default function App() {
                 outlook={plan.outlook}
                 onOrder={saveOrder}
                 onOpenPath={(id) => {
-                  setPathSel(id)
-                  setTab('paths')
+                  setCalPath(calPath === id ? '' : id)
                   setRailOpen(false)
                 }}
+                selected={calPath}
               />
               <button className="free-chip" onClick={() => setEditingFree(true)}>
                 🕒 When I'm free ·{' '}
@@ -1119,15 +1121,15 @@ export default function App() {
             onOrder={saveOrder}
             ack={calAck}
             onAck={saveAck}
+            focusPath={calPath}
+            onFocusPath={setCalPath}
             narrowList={
               <CalList
                 ordered={ordered}
                 outlook={plan.outlook}
                 onOrder={saveOrder}
-                onOpenPath={(id) => {
-                  setPathSel(id)
-                  setTab('paths')
-                }}
+                onOpenPath={(id) => setCalPath(calPath === id ? '' : id)}
+                selected={calPath}
               />
             }
           />

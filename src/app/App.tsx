@@ -1,32 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { generate, loadSettings, record, resolveVoice, saveSettings, type Settings } from './generate.ts'
-import { DEFAULT_VOICE, type GenKind, type GenRequest } from './prompts.ts'
+import { DEFAULT_VOICE, type GenRequest } from './prompts.ts'
 import {
   applyFix,
   parseChart,
   latest,
   lessonText,
-  parseBranches,
   parseCheck,
-  parseCourses,
   parseLesson,
   parsePractice,
   parseSections,
-  parseSyllabus,
   type RawItem,
 } from './parse.ts'
-import { openStore, type NewNode, type Store } from './store.ts'
+import { openStore, type NewPath, type Store } from './store.ts'
+import { Paths, PATH_COLORS } from './Paths.tsx'
+import { Schedule } from './Schedule.tsx'
+import { EMPTY_AVAILABILITY } from './schedule.ts'
+import { childrenOrGenerate } from './tree.ts'
 import {
-  CHILD_LEVEL,
   chainIds,
   liveKey,
+  type Availability,
   type Bucket,
+  type Path,
   type CheckResult,
   type Extra,
   type Lesson,
   type LectureBody,
   type LectureLength,
-  type Level,
   type Teacher,
   type SavedItem,
   type Syllabus,
@@ -43,7 +44,6 @@ import { TextSizeButton } from './TextSize.tsx'
 import { PanelWidthSwitch, type PanelWidth } from './PanelWidth.tsx'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
-const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
 const SUGGESTIONS = ['Economics', 'Banking', 'Organic Chemistry', 'Music Theory', 'Psychology', 'Philosophy']
 
 const EMPTY_TOOLS: ToolCtx = {
@@ -119,7 +119,11 @@ export default function App() {
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
-  const [tab, setTab] = useState<'explore' | 'library'>('explore')
+  const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'schedule'>('explore')
+  const [paths, setPaths] = useState<Path[]>([])
+  /** the path open in the Paths view ('' none, 'new' the drafter) */
+  const [pathSel, setPathSel] = useState('')
+  const [availability, setAvailability] = useState<Availability>(EMPTY_AVAILABILITY)
   /** node id → last opened; drives the "explored" colour and resume-where-you-left-off */
   const [visited, setVisited] = useState<Map<string, string>>(new Map())
   const [saved, setSaved] = useState<SavedItem[]>([])
@@ -186,6 +190,9 @@ export default function App() {
       setDone(comp)
       setVisited(vis)
       setSaved(sav)
+      setPaths(await s.paths().catch(() => []))
+      const av = await s.pref<Availability>('availability').catch(() => null)
+      if (av) setAvailability({ ...EMPTY_AVAILABILITY, ...av })
     })
   }, [])
 
@@ -241,31 +248,9 @@ export default function App() {
     (node: TreeNode, trail: string[]) =>
       run(node.id, async () => {
         if (!store) return
-        let list = await store.children(node.id)
-        let syllabus = node.level === 'course' ? await store.doc<Syllabus>(node.id) : null
-        if (!list.length) {
-          const kind = GEN_KIND[node.level]!
-          const parse = (t: string, complete: boolean): RawItem[] =>
-            kind === 'branches' ? parseBranches(t, complete) : kind === 'courses' ? parseCourses(t, complete) : parseSyllabus(t, complete).items
-          const { text, model } = await generate({ kind, trail }, settings, (t) =>
-            throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: parse(t, false) }))),
-          )
-          const rows: NewNode[] = parse(text, true).map((it, i) => ({
-            parent_id: node.id,
-            level: CHILD_LEVEL[node.level]!,
-            title: it.title.slice(0, 200),
-            summary: it.summary.slice(0, 2000),
-            meta: node.level === 'branch' ? { code: it.code ?? '', tier: it.tier ?? '' } : {},
-            position: i,
-          }))
-          if (!rows.length) throw new Error('The model returned nothing usable. Try again.')
-          list = await store.addNodes(rows)
-          if (node.level === 'course') {
-            const { description, objectives } = parseSyllabus(text, true)
-            syllabus = { description, objectives }
-            await store.saveDoc(node.id, syllabus, model)
-          }
-        }
+        const { list, syllabus } = await childrenOrGenerate(store, settings, node, trail, (items) =>
+          throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: items }))),
+        )
         setKids((k) => ({ ...k, [node.id]: list }))
         setPreview((p) => ({ ...p, [node.id]: undefined }))
         if (syllabus) setDocs((d) => ({ ...d, [node.id]: syllabus }))
@@ -643,6 +628,47 @@ export default function App() {
     void store?.setPref('showUsage', on).catch(() => {})
   }
 
+  const savePath = async (p: NewPath): Promise<Path> => {
+    if (!store) throw new Error('Still loading.')
+    const row = await store.savePath(p)
+    setPaths((list) => [row, ...list.filter((x) => x.id !== row.id)].sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    return row
+  }
+
+  const deletePath = async (id: string) => {
+    if (!store) return
+    await store.deletePath(id)
+    setPaths((list) => list.filter((x) => x.id !== id))
+    setPathSel('')
+  }
+
+  /** Add a chapter (or every chapter of a course) to the end of a path; 'new' starts one. */
+  const addToPath = async (nodeId: string, pathId: string): Promise<string> => {
+    if (!store) throw new Error('Still loading.')
+    const node = known[nodeId] ?? (await loadAncestors([nodeId]))[nodeId]
+    let ids = [nodeId]
+    if (node?.level === 'course') {
+      const chapters = kids[nodeId] ?? (await store.children(nodeId))
+      if (chapters.length) {
+        ids = chapters.map((c) => c.id)
+        setKids((k) => ({ ...k, [nodeId]: chapters }))
+      }
+    }
+    const target =
+      pathId === 'new'
+        ? await savePath({ title: node?.title ?? 'New path', goal: '', focus: '', due: null, steps: [], color: PATH_COLORS[paths.length % PATH_COLORS.length], archived: false })
+        : paths.find((x) => x.id === pathId)
+    if (!target) throw new Error('That path is gone.')
+    const fresh = ids.filter((id) => !target.steps.some((st) => st.node_id === id))
+    await savePath({ ...target, steps: [...target.steps, ...fresh.map((id) => ({ node_id: id, note: '', minutes: 45 }))] })
+    return target.title
+  }
+
+  const saveAvailability = (a: Availability) => {
+    setAvailability(a)
+    void store?.setPref('availability', a).catch(() => {})
+  }
+
   const removeSaved = async (item: SavedItem) => {
     if (!store) return
     setSaved((s) => s.filter((x) => x.id !== item.id))
@@ -783,14 +809,6 @@ export default function App() {
               Learn
             </button>
           </form>
-          <nav className="tabs" aria-label="View">
-            <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
-              Explore
-            </button>
-            <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
-              Library{saved.length > 0 && <span className="count">{saved.length}</span>}
-            </button>
-          </nav>
           {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
           <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
@@ -800,6 +818,29 @@ export default function App() {
         </header>
 
         <aside className="rail">
+          <nav className="rail-nav" aria-label="Sections">
+            {(
+              [
+                ['library', '📚', 'Library', saved.length],
+                ['paths', '🧭', 'Paths', paths.filter((x) => !x.archived).length],
+                ['schedule', '🗓', 'Schedule', 0],
+              ] as const
+            ).map(([k, icon, label, n]) => (
+              <button
+                key={k}
+                className={tab === k ? 'on' : ''}
+                onClick={() => {
+                  setTab(tab === k ? 'explore' : k)
+                  setRailOpen(false)
+                }}
+                aria-pressed={tab === k}
+              >
+                <span className="rail-nav-icon">{icon}</span>
+                {label}
+                {n > 0 && <span className="count">{n}</span>}
+              </button>
+            ))}
+          </nav>
           <div className="rail-head">
             <span>Subjects</span>
             {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
@@ -831,7 +872,7 @@ export default function App() {
             {sortedSubjects.map((s, i) => (
               <li key={s.id}>
                 <button
-                  className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                  className={`rail-item ${tab === 'explore' && path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
                   onClick={() => void openSubject(s)}
                 >
                   {s.title}
@@ -882,6 +923,43 @@ export default function App() {
             onOpen={(id) => void openById(id)}
             onRemove={(x) => void removeSaved(x)}
             buckets={buckets}
+            paths={paths}
+            onAddToPath={addToPath}
+          />
+        )}
+
+        {tab === 'paths' && store && (
+          <Paths
+            store={store}
+            settings={settings}
+            paths={paths}
+            nodes={known}
+            done={done}
+            loadAncestors={loadAncestors}
+            onSave={savePath}
+            onDelete={(id) => void deletePath(id)}
+            onOpen={(id) => void openById(id)}
+            onToggleDone={(id) => void toggleDone(id)}
+            onBuilt={(r) => {
+              setKids((k) => ({ ...k, ...r.lists }))
+              void store.subjects().then(setSubjects).catch(() => {})
+            }}
+            selected={pathSel}
+            onSelect={setPathSel}
+          />
+        )}
+
+        {tab === 'schedule' && (
+          <Schedule
+            settings={settings}
+            paths={paths}
+            nodes={known}
+            done={done}
+            availability={availability}
+            onAvailability={saveAvailability}
+            onOpen={(id) => void openById(id)}
+            onToggleDone={(id) => void toggleDone(id)}
+            onGoPaths={() => setTab('paths')}
           />
         )}
 

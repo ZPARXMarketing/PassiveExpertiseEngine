@@ -23,6 +23,24 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
+- **Left rail: Library · Paths · Schedule** (tap again to go back to Explore).
+- **Library** browses like Explore: subject → branch → course → chapter columns (only where
+  you've saved something, with counts), then that chapter's highlights, lectures and star.
+  Search, type and colour filters still apply; **Sort → By colour** groups highlights by bucket.
+  **+ Path** on a chapter (or a whole course) adds it to a path.
+- **Paths** — a sequential, goal-specific course. **✦ New path with AI**: describe the goal,
+  optionally paste the assignment / rubric and attach photos or PDFs, set a due date. The
+  planner (`google/gemini-3.8-flash`, reads images and PDFs) sees your whole tree and drafts
+  subject › branch › course › chapter steps with study time and what to focus on; the preview
+  marks each step "In your library" or new. **Create** reuses matches and generates anything
+  missing the way Explore does (full catalog / syllabus), so Explore keeps filling in. Steps
+  can be reordered, re-timed, removed, ticked off; tap one to open the chapter.
+- **Schedule** — tell it when you're free in plain words (the AI turns that into weekly blocks
+  and one-off busy days) or set blocks by hand. Your paths' unfinished chapters are laid into
+  that time, earliest due date first, long chapters split across blocks. Week / Month / Year.
+  It re-plans itself whenever you tick something off, fall behind or change availability, and
+  warns when a path won't finish by its due date. Google Calendar can replace manual
+  availability later.
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
 - **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.

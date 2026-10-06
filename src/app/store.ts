@@ -4,7 +4,7 @@
  * migration in supabase/migrations is applied.
  */
 
-import type { Bucket, Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
+import type { Bucket, Extra, ExtraKind, Level, NodeMeta, Path, SavedItem, TreeNode } from './types.ts'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
@@ -32,6 +32,8 @@ export interface Store {
   completions(): Promise<Set<string>>
   setComplete(nodeId: string, done: boolean): Promise<void>
   nodesById(ids: string[]): Promise<TreeNode[]>
+  /** the whole tree, light (no summaries) — for the path planner's inventory */
+  allNodes(): Promise<TreeNode[]>
   /** node id → last opened (ISO) */
   visits(): Promise<Map<string, string>>
   visit(nodeId: string): Promise<void>
@@ -53,7 +55,13 @@ export interface Store {
   saveBucket(b: Bucket): Promise<void>
   pref<T>(key: string): Promise<T | null>
   setPref(key: string, value: unknown): Promise<void>
+  paths(): Promise<Path[]>
+  /** create (no id yet) or update one path; returns the stored row */
+  savePath(p: NewPath): Promise<Path>
+  deletePath(id: string): Promise<void>
 }
+
+export type NewPath = Omit<Path, 'id' | 'created_at' | 'updated_at'> & { id?: string }
 
 /* ---------------- Supabase ---------------- */
 
@@ -112,6 +120,7 @@ const cloud: Store = {
     }
   },
   nodesById: (ids) => (ids.length ? rest<TreeNode[]>(`xe_nodes?id=in.(${ids.join(',')})`) : Promise.resolve([])),
+  allNodes: () => rest<TreeNode[]>('xe_nodes?select=id,parent_id,level,title,meta,position,created_at&order=position.asc&limit=20000'),
   visits: async () => {
     const rows = await rest<{ node_id: string; visited_at: string }[]>('xe_visits?select=node_id,visited_at')
     return new Map(rows.map((r) => [r.node_id, r.visited_at]))
@@ -190,6 +199,17 @@ const cloud: Store = {
       body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
     })
   },
+  paths: () => rest<Path[]>('xe_paths?order=created_at.desc'),
+  savePath: async (p) => {
+    const body = JSON.stringify({ ...p, updated_at: new Date().toISOString() })
+    const [row] = p.id
+      ? await rest<Path[]>(`xe_paths?id=eq.${p.id}`, { method: 'PATCH', headers: { prefer: 'return=representation' }, body })
+      : await rest<Path[]>('xe_paths', { method: 'POST', headers: { prefer: 'return=representation' }, body })
+    return row
+  },
+  deletePath: async (id) => {
+    await rest(`xe_paths?id=eq.${id}`, { method: 'DELETE' })
+  },
 }
 
 /* ---------------- this device ---------------- */
@@ -204,6 +224,7 @@ interface LocalData {
   saved?: SavedItem[]
   extras?: Extra[]
   prefs?: Record<string, unknown>
+  paths?: Path[]
 }
 
 function load(): LocalData {
@@ -268,6 +289,7 @@ function makeDevice(): Store {
       save(d)
     },
     nodesById: async (ids) => d.nodes.filter((n) => ids.includes(n.id)),
+    allNodes: async () => [...d.nodes],
     visits: async () => new Map(Object.entries(visits)),
     visit: async (id) => {
       visits[id] = new Date().toISOString()
@@ -313,6 +335,20 @@ function makeDevice(): Store {
     pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
     setPref: async (key, value) => {
       ;(d.prefs ??= {})[key] = value
+      save(d)
+    },
+    paths: async () => [...(d.paths ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    savePath: async (p) => {
+      const now = new Date().toISOString()
+      const list = (d.paths ??= [])
+      const old = p.id ? list.find((x) => x.id === p.id) : undefined
+      const row: Path = { ...p, id: p.id ?? crypto.randomUUID(), created_at: old?.created_at ?? now, updated_at: now }
+      d.paths = [...list.filter((x) => x.id !== row.id), row]
+      save(d)
+      return row
+    },
+    deletePath: async (id) => {
+      d.paths = (d.paths ?? []).filter((x) => x.id !== id)
       save(d)
     },
   }

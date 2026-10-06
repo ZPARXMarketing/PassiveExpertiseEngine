@@ -5,6 +5,7 @@ import { MAX_ATTACHMENT, type Attachment } from './prompts.ts'
 import type { NewPath, Store } from './store.ts'
 import { bestMatch, buildPath, inventory, type BuildResult } from './tree.ts'
 import { Strip, useFit } from './fit.tsx'
+import type { PanelWidth } from './PanelWidth.tsx'
 import { chainIds, type Path, type PathStep, type TreeNode } from './types.ts'
 
 export const PATH_COLORS = ['#2affa3', '#4cc9ff', '#a78bff', '#ff5caa', '#ffd60a', '#ff8a3d']
@@ -27,6 +28,7 @@ interface Props {
   /** which path is open (kept by the app so it survives switching views) */
   selected: string
   onSelect: (id: string) => void
+  panelWidth: PanelWidth
 }
 
 /** Paths: goal-specific sequences of chapters, drafted by the AI or put together by hand. */
@@ -47,11 +49,11 @@ export function Paths(p: Props) {
   const [keep, setKeep] = useState(-1)
   useEffect(() => setKeep(-1), [selected])
   const open = selected === 'new' || !!path
-  const { ref: colsRef, folded } = useFit(open ? [300, 340] : [300], keep)
+  const { ref: colsRef, folded } = useFit(open ? [300, 340] : [300], keep, p.panelWidth)
 
   return (
     <main className="explore paths-view">
-      <div className="columns" ref={colsRef}>
+      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
         {folded[0] ? (
           <Strip kicker="Paths" picked={selected === 'new' ? 'New path' : path?.title} onOpen={() => setKeep(0)} />
         ) : (

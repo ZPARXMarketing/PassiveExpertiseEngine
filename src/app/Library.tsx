@@ -3,6 +3,7 @@ import { LectureControl } from './Study.tsx'
 import { chainIds, lectureTitle, type Bucket, type Extra, type LectureBody, type Path, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 import { colorOf } from './highlight.ts'
 import { Strip, useFit } from './fit.tsx'
+import type { PanelWidth } from './PanelWidth.tsx'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 type Sort = 'catalog' | 'recent' | 'az' | 'bucket'
@@ -49,6 +50,7 @@ interface Props {
   paths: Path[]
   /** add a chapter (or a course's chapters) to a path; 'new' makes one. Resolves to the path's name. */
   onAddToPath: (nodeId: string, pathId: string) => Promise<string>
+  panelWidth: PanelWidth
 }
 
 interface ChapterGroup {
@@ -96,7 +98,7 @@ const SORTS: [Sort, string][] = [
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth }: Props) {
   const initial = useMemo(loadView, [])
   const [filter, setFilter] = useState<Filter>(initial.filter)
   const [query, setQuery] = useState(initial.query)
@@ -366,6 +368,7 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
           onOpen={onOpen}
           onRemove={onRemove}
           onAddToPath={onAddToPath}
+          panelWidth={panelWidth}
         />
       )}
     </section>
@@ -385,7 +388,9 @@ function Browse({
   onOpen,
   onRemove,
   onAddToPath,
+  panelWidth,
 }: {
+  panelWidth: PanelWidth
   tree: SubjectGroup[]
   sel: string[]
   setSel: (s: string[]) => void
@@ -415,6 +420,7 @@ function Browse({
   const { ref: colsRef, folded } = useFit(
     Array.from({ length: shown }, (_, i) => (i === 4 ? 300 : 250)),
     keep,
+    panelWidth,
   )
   const strip = (i: number, kicker: string, picked?: string) =>
     folded[i] ? <Strip key={`strip-${i}`} kicker={kicker} picked={picked} onOpen={() => setKeep(i)} /> : null
@@ -426,7 +432,7 @@ function Browse({
   const chapterCount = (ch: ChapterGroup) => (ch.saved ? 1 : 0) + ch.snippets.length + ch.lectures.length
 
   return (
-    <div className="lib-cols" ref={colsRef}>
+    <div className={`lib-cols pw-${panelWidth}`} ref={colsRef}>
       {strip(0, 'Subjects', subject?.node.title) ?? (
       <section className="column">
         <header className="column-head">

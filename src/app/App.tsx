@@ -620,14 +620,34 @@ export default function App() {
     void store?.setPref('railSort', next).catch(() => {})
   }
 
-  const moveSubject = (id: string, by: -1 | 1) => {
+  /** Custom order: drag a subject by its handle (touch or mouse); saved when you let go. */
+  const [dragId, setDragId] = useState('')
+  const railItems = useRef(new Map<string, HTMLLIElement>())
+  const startDrag = (id: string, e: React.PointerEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragId(id)
+  }
+  const dragMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragId) return
     const ids = sortedSubjects.map((x) => x.id)
-    const i = ids.indexOf(id)
-    const j = i + by
-    if (i < 0 || j < 0 || j >= ids.length) return
-    ;[ids[i], ids[j]] = [ids[j], ids[i]]
+    // new slot = how many of the others sit above the finger
+    let to = 0
+    for (const id of ids) {
+      if (id === dragId) continue
+      const r = railItems.current.get(id)?.getBoundingClientRect()
+      if (r && e.clientY > r.top + r.height / 2) to++
+    }
+    const from = ids.indexOf(dragId)
+    if (to === from) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
     setRailOrder(ids)
-    void store?.setPref('railOrder', ids).catch(() => {})
+  }
+  const endDrag = () => {
+    if (!dragId) return
+    setDragId('')
+    void store?.setPref('railOrder', sortedSubjects.map((x) => x.id)).catch(() => {})
   }
 
   const toggleUsage = (on: boolean) => {
@@ -824,15 +844,20 @@ export default function App() {
               Library
             </button>
           </nav>
-          {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
+          <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>
           {showUsage && <Usage />}
         </header>
 
-        <aside className="rail">
+        <aside className={`rail ${tab !== 'explore' ? 'rail-sections' : ''}`}>
           {tab !== 'explore' ? (
+            <>
+            <div className="rail-head">
+              <span>Workspace</span>
+              {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+            </div>
             <nav className="rail-nav" aria-label="Sections">
               {(
                 [
@@ -851,11 +876,12 @@ export default function App() {
                   aria-pressed={tab === k}
                 >
                   <span className="rail-nav-icon">{icon}</span>
-                  {label}
+                  <span className="rail-nav-label">{label}</span>
                   {n > 0 && <span className="count">{n}</span>}
                 </button>
               ))}
             </nav>
+            </>
           ) : (
             <>
               <div className="rail-head">
@@ -880,14 +906,25 @@ export default function App() {
                       onClick={() => (k === 'custom' && railSort === 'custom' ? setArranging((a) => !a) : chooseRailSort(k))}
                     >
                       {label}
-                      {k === 'custom' && railSort === 'custom' && (arranging ? ' ✓' : ' ✎')}
+                      {k === 'custom' && railSort === 'custom' && (
+                        <span className="rail-lock" aria-label={arranging ? 'Unlocked: drag to sort, tap to lock' : 'Locked: tap to sort'}>
+                          {arranging ? ' 🔓' : ' 🔒'}
+                        </span>
+                      )}
                     </button>
                   ))}
                 </div>
               )}
               <ul>
-                {sortedSubjects.map((s, i) => (
-                  <li key={s.id}>
+                {sortedSubjects.map((s) => (
+                  <li
+                    key={s.id}
+                    className={dragId === s.id ? 'dragging' : ''}
+                    ref={(el) => {
+                      if (el) railItems.current.set(s.id, el)
+                      else railItems.current.delete(s.id)
+                    }}
+                  >
                     <button
                       className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
                       onClick={() => void openSubject(s)}
@@ -895,17 +932,15 @@ export default function App() {
                       {s.title}
                     </button>
                     {arranging && railSort === 'custom' ? (
-                      <span className="rail-move">
-                        <button onClick={() => moveSubject(s.id, -1)} disabled={i === 0} aria-label={`Move ${s.title} up`}>
-                          ↑
-                        </button>
-                        <button
-                          onClick={() => moveSubject(s.id, 1)}
-                          disabled={i === sortedSubjects.length - 1}
-                          aria-label={`Move ${s.title} down`}
-                        >
-                          ↓
-                        </button>
+                      <span
+                        className="rail-grip"
+                        onPointerDown={(e) => startDrag(s.id, e)}
+                        onPointerMove={dragMove}
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                        aria-label={`Drag ${s.title} to reorder`}
+                      >
+                        ≡
                       </span>
                     ) : (
                       <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
@@ -944,6 +979,7 @@ export default function App() {
             buckets={buckets}
             paths={paths}
             onAddToPath={addToPath}
+            panelWidth={panelWidth}
           />
         )}
 
@@ -965,6 +1001,7 @@ export default function App() {
             }}
             selected={pathSel}
             onSelect={setPathSel}
+            panelWidth={panelWidth}
           />
         )}
 
@@ -979,6 +1016,7 @@ export default function App() {
             onOpen={(id) => void openById(id)}
             onToggleDone={(id) => void toggleDone(id)}
             onGoPaths={() => setTab('paths')}
+            panelWidth={panelWidth}
           />
         )}
 

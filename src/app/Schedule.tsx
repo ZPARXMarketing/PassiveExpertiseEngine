@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Strip, useFit } from './fit.tsx'
+import type { PanelWidth } from './PanelWidth.tsx'
 import { generate, type Settings } from './generate.ts'
 import { parseAvailability } from './parse.ts'
 import { hours } from './Paths.tsx'
@@ -19,6 +20,7 @@ interface Props {
   onOpen: (nodeId: string) => void
   onToggleDone: (nodeId: string) => void
   onGoPaths: () => void
+  panelWidth: PanelWidth
 }
 
 const addDays = (d: Date, n: number) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n)
@@ -53,7 +55,7 @@ export function Schedule(p: Props) {
   const noTime = !availability.weekly.length && !availability.overrides.some((o) => o.blocks.length)
   const hasDays = !!live.length && !noTime
   const widths = [250, ...(hasDays ? [250] : []), ...(hasDays && view === 'year' && month ? [250] : []), ...(day ? [300] : [])]
-  const { ref: colsRef, folded } = useFit(widths, keep)
+  const { ref: colsRef, folded } = useFit(widths, keep, p.panelWidth)
   const viewName = view === 'week' ? 'Week' : view === 'month' ? 'Month' : 'Year'
   const dayName = (k: string) => new Date(`${k}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
   const monthName = (m: string) => new Date(`${m}-15T12:00:00`).toLocaleDateString(undefined, { month: 'long' })
@@ -127,7 +129,7 @@ export function Schedule(p: Props) {
 
   return (
     <main className="explore schedule-view">
-      <div className="columns" ref={colsRef}>
+      <div className={`columns pw-${p.panelWidth}`} ref={colsRef}>
         {folded[0] ? (
           <Strip kicker="Schedule" picked={viewName} onOpen={() => setKeep(0)} />
         ) : (

@@ -1,15 +1,19 @@
 import { useLayoutEffect, useRef, useState } from 'react'
+import type { PanelWidth } from './PanelWidth.tsx'
 
 const GAP = 14
 const STRIP = 48
+/** compact column width (titles only) */
+const COMPACT = 200
 
 /**
  * Like Explore: when a row of columns doesn't fit its container, the oldest ones fold into
  * slim strips (the newest never folds), so nothing needs scrolling sideways.
  * `widths` = each column's comfortable width; `keep` = a column tapped open (stays open).
- * Returns which ones to fold.
+ * `mode` = the top-bar panel switch: Slim folds every older column, Wide folds none,
+ * Compact narrows them (titles only) and Auto just fits. Returns which ones to fold.
  */
-export function useFit(widths: number[], keep = -1) {
+export function useFit(widths: number[], keep = -1, mode: PanelWidth = 'auto') {
   const ref = useRef<HTMLDivElement>(null)
   const [avail, setAvail] = useState(0)
   useLayoutEffect(() => {
@@ -24,13 +28,14 @@ export function useFit(widths: number[], keep = -1) {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const folded = widths.map(() => false)
-  if (avail > 0) {
-    let total = widths.reduce((t, w) => t + w, 0) + GAP * (widths.length - 1)
+  const folded = widths.map((_, i) => mode === 'strip' && i < widths.length - 1 && i !== keep)
+  if (avail > 0 && (mode === 'auto' || mode === 'compact')) {
+    const w = mode === 'compact' ? widths.map((x, i) => (i < widths.length - 1 ? COMPACT : x)) : widths
+    let total = w.reduce((t, x) => t + x, 0) + GAP * (w.length - 1)
     for (let i = 0; i < widths.length - 1 && total > avail; i++) {
       if (i === keep) continue
       folded[i] = true
-      total -= widths[i] - STRIP
+      total -= w[i] - STRIP
     }
   }
   return { ref, folded }

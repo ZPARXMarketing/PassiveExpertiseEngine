@@ -108,6 +108,7 @@ button:disabled {
 
 .topic-form {
   flex: 1;
+  min-width: 0;
   display: flex;
   gap: 8px;
   max-width: 720px;
@@ -309,27 +310,6 @@ button:disabled {
   background: var(--neon-soft);
   color: var(--neon);
   font-weight: 600;
-}
-
-.rail-move {
-  position: absolute;
-  right: 4px;
-  top: 50%;
-  transform: translateY(-50%);
-  display: flex;
-  gap: 2px;
-}
-
-.rail-move button {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  color: var(--text-dim);
-  background: var(--surface-2);
-}
-
-.rail-move button:disabled {
-  opacity: 0.3;
 }
 
 .rail-scrim {
@@ -2763,6 +2743,7 @@ mark.hl-active {
 
 /* spend meter, top right */
 .usage {
+  flex-shrink: 0;
   display: flex;
   gap: 8px;
   font: 500 11px/1 var(--font-mono);
@@ -3357,4 +3338,91 @@ mark.hl-active {
   border-color: var(--neon);
   background: var(--neon-soft);
   color: var(--neon);
+}
+
+/* Library mode: the left panel is three big boxes (Library / Paths / Schedule) */
+.rail.rail-sections {
+  display: flex;
+  flex-direction: column;
+}
+.rail-sections .rail-nav {
+  flex: 1;
+  display: grid;
+  grid-template-rows: repeat(3, minmax(90px, 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0 0 4px;
+  border: 0;
+}
+.rail-sections .rail-nav button {
+  position: relative;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface);
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 22px;
+  color: var(--text);
+}
+.rail-sections .rail-nav button.on {
+  border-color: var(--neon);
+  box-shadow: var(--glow-card);
+}
+.rail-sections .rail-nav-icon {
+  width: auto;
+  font-size: 30px;
+}
+.rail-sections .rail-nav .count {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
+
+/* Custom subject order: unlock, drag by the handle, lock again */
+.rail-grip {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--text-dim);
+  background: var(--surface-2);
+  font-size: 18px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.rail li.dragging .rail-item {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+}
+.rail li.dragging .rail-grip {
+  cursor: grabbing;
+  color: var(--neon);
+}
+
+/* panel switch → Library / Paths / Schedule columns: Compact = titles only, narrower */
+.pw-compact > .column:not(.strip):not(:last-child) {
+  flex: 0 0 200px;
+}
+.pw-compact > .column:not(:last-child) .tile-sum,
+.pw-compact > .column:not(:last-child) .column-desc {
+  display: none;
+}
+@media (max-width: 960px) {
+  .topbar {
+    gap: 8px;
+  }
+  .pw-switch button {
+    width: 34px;
+  }
 }

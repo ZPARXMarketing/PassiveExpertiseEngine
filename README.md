@@ -26,7 +26,8 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Explore | Library** toggle in the top bar. In Library mode the left panel swaps the subject
   list for **Library · Paths · Schedule**, and each opens out in columns like Explore. In a
   smaller window the oldest columns fold into slim strips (tap one to open it), so nothing
-  scrolls sideways.
+  scrolls sideways. The top bar and the panel switch stay in the same place in both modes; the
+  switch (Slim / Compact / Wide) also sets the Library, Paths and Schedule columns.
 - **Library** browses like Explore: subject → branch → course → chapter columns (only where
   you've saved something, with counts), then that chapter's highlights, lectures and star.
   Search, type and colour filters still apply; **Sort → By colour** groups highlights by bucket.
@@ -48,7 +49,8 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Text size** A / A+ / A++ lives in Settings (this device).
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
-- **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.
+- **Sort the subject rail:** A–Z, Newest, or Custom: tap the 🔒 to unlock, drag subjects by their ≡
+  handle, tap 🔓 to lock again. Synced.
 - **Add to home screen** (Settings): shows the iOS Share → Add to Home Screen steps; it then opens
   full screen with its own icon.
 - **Highlighter buckets.** Select text in a chapter (or a deeper dive) and tap a bucket — each has

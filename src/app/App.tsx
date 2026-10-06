@@ -40,6 +40,7 @@ import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
 import { Usage } from './Usage.tsx'
 import { TextSizeButton } from './TextSize.tsx'
+import { PanelWidthSwitch, type PanelWidth } from './PanelWidth.tsx'
 import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
@@ -91,6 +92,23 @@ export default function App() {
   const width = useWidth()
   /** manual fold per panel (keyed by its parent id); cleared on each new selection */
   const [folds, setFolds] = useState<Record<string, Fold>>({})
+  /** chosen width for the earlier panels (this device); auto = fold to fit */
+  const [panelWidth, setPanelWidth] = useState<PanelWidth>(() => {
+    try {
+      return (localStorage.getItem('panel-width') as PanelWidth) || 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+  const choosePanelWidth = (v: PanelWidth) => {
+    setPanelWidth(v)
+    setFolds({})
+    try {
+      localStorage.setItem('panel-width', v)
+    } catch {
+      /* private mode: applies this visit */
+    }
+  }
   const [topic, setTopic] = useState('')
 
   const [subjects, setSubjects] = useState<TreeNode[]>([])
@@ -773,6 +791,7 @@ export default function App() {
               Library{saved.length > 0 && <span className="count">{saved.length}</span>}
             </button>
           </nav>
+          {tab === 'explore' && path.length > 0 && <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />}
           <TextSizeButton className="icon-btn" />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
@@ -899,7 +918,11 @@ export default function App() {
                 {panels.map((parent, depth) => (
                     <Column
                       key={parent.id}
-                      fold={folds[parent.id] ?? autoFolds[depth]}
+                      fold={
+                        folds[parent.id] ??
+                        // the newest list (no chapter open yet) always stays fully open
+                        (panelWidth !== 'auto' && (chapter || depth < panels.length - 1) ? panelWidth : autoFolds[depth])
+                      }
                       onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
                       selectedTitle={path[depth + 1]?.title}
                       parent={parent}

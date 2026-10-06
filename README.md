@@ -23,6 +23,8 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
+- **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
+  Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
 - **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.
 - **Add to home screen** (Settings): shows the iOS Share → Add to Home Screen steps; it then opens
   full screen with its own icon.

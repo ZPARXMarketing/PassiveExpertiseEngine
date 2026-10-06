@@ -2824,3 +2824,34 @@ mark.hl-active {
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
+
+/* Panel width switch (top bar): Slim / Compact / Wide pictures */
+.pw-switch {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.pw-switch button {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 34px;
+  border-radius: 999px;
+  color: var(--text-faint);
+}
+.pw-switch button:hover {
+  color: var(--text);
+}
+.pw-switch button.on {
+  background: var(--neon-soft);
+  color: var(--neon);
+}
+@media (max-width: 600px) {
+  .pw-switch {
+    display: none;
+  }
+}

@@ -227,150 +227,6 @@ export function Schedule(p: Props) {
           />
         )}
 
-        {/* ---------- YEAR ---------- */}
-        <section className={`cal-card ${yearOpen ? 'open' : ''}`}>
-          <header className="cal-card-head">
-            <button className="cal-card-title" onClick={() => setYearOpen((o) => !o)} aria-expanded={yearOpen}>
-              <span className="column-kicker">Year</span>
-              <h3>{year}</h3>
-              <span className="muted">{yearOpen ? 'Hide the weekly load ▴' : 'Show the full year ▾'}</span>
-            </button>
-            <span className="cal-nav">
-              <button className="icon-btn" onClick={() => setYear(year - 1)} aria-label="Previous year">
-                ‹
-              </button>
-              <button className="icon-btn" onClick={() => setYear(year + 1)} aria-label="Next year">
-                ›
-              </button>
-            </span>
-          </header>
-          <div className="gantt">
-            <div className="gantt-months">
-              <span />
-              <div>
-                {MONTHS.map((m, i) => {
-                  const k = `${year}-${String(i + 1).padStart(2, '0')}`
-                  return (
-                    <button key={m} className={month === k ? 'on' : ''} onClick={() => setMonth(k)}>
-                      {m}
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-            {p.ordered.map((x) => {
-              const mine = sessions.filter((s) => s.pathId === x.id)
-              const o = outlook.find((y) => y.pathId === x.id)
-              const firstS = mine[0]?.date
-              const lastS = mine[mine.length - 1]?.date
-              const dated = timingOf(x, p.meta) === 'date' && x.due
-              const lateFrom = dated && lastS && lastS > x.due! ? x.due! : ''
-              return (
-                <div key={x.id} className={`gantt-row ${dim(x.id)}`} style={{ '--pc': x.color } as React.CSSProperties}>
-                  <button className="gantt-label" onClick={() => p.onFocusPath(focus?.id === x.id ? '' : x.id)} title={x.title}>
-                    <i className="path-dot" /> {x.title}
-                  </button>
-                  <div className="gantt-track">
-                    {MONTHS.map((_, i) => (
-                      <i key={i} className="gantt-grid" style={{ left: `${(i / 12) * 100}%` }} />
-                    ))}
-                    {inYear(today) && <i className="gantt-today" style={{ left: `${pos(today)}%` }} />}
-                    {firstS && lastS && (firstS <= `${year}-12-31` && lastS >= `${year}-01-01`) && (
-                      <div
-                        className="gantt-bar"
-                        style={{ left: `${pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS)}%`, width: `${Math.max(0.8, pos(lastS) - pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS))}%` }}
-                        title={`${fmt(firstS)} → ${fmt(lastS)}`}
-                      />
-                    )}
-                    {lateFrom && inYear(lateFrom) && (
-                      <div className="gantt-late" style={{ left: `${pos(lateFrom)}%`, width: `${Math.max(0.8, pos(lastS!) - pos(lateFrom))}%` }} title="Past its due date" />
-                    )}
-                    {dated && inYear(x.due!) && <i className={`gantt-due ${o?.late ? 'late' : ''}`} style={{ left: `${pos(x.due!)}%` }} title={`Due ${fmt(x.due!)}`} />}
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-          {yearOpen && (
-            <div className="load">
-              <div className="load-legend">
-                Hours per week, stacked by path · <span className="load-free-key" /> free time
-              </div>
-              <div className="load-bars">
-                {weeks.map((w) => (
-                  <button
-                    key={w.start}
-                    className={`load-week ${weekDays[0] === w.start ? 'on' : ''}`}
-                    onClick={() => goWeek(w.start)}
-                    title={`Week of ${fmt(w.start)}: ${hours(w.total)} of ${hours(w.free)} free`}
-                  >
-                    <i className="load-free" style={{ height: `${(w.free / maxWeek) * 100}%` }} />
-                    <span className="load-stack" style={{ height: `${(w.total / maxWeek) * 100}%` }}>
-                      {p.ordered
-                        .filter((x) => w.byPath.get(x.id))
-                        .map((x) => (
-                          <i key={x.id} className={dim(x.id)} style={{ flex: w.byPath.get(x.id), background: x.color }} />
-                        ))}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* ---------- MONTH ---------- */}
-        <section className="cal-card">
-          <header className="cal-card-head">
-            <div className="cal-card-title static">
-              <span className="column-kicker">Month</span>
-              <h3>{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
-              <span className="muted">{sum(sessions.filter((s) => s.date.startsWith(month)))} planned</span>
-            </div>
-            <span className="cal-nav">
-              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm - 2, 1)).slice(0, 7))} aria-label="Previous month">
-                ‹
-              </button>
-              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm, 1)).slice(0, 7))} aria-label="Next month">
-                ›
-              </button>
-            </span>
-          </header>
-          <div className="mgrid">
-            {DAY.map((d) => (
-              <span key={d} className="mgrid-head">
-                {d}
-              </span>
-            ))}
-            {cells.map((k, i) => {
-              if (!k) return <span key={`b${i}`} />
-              const list = byDate.get(k) ?? []
-              const dues = dueOn(k)
-              const clash = list.some(lateSession)
-              const free = blocksOn(parse(k), availability).length > 0
-              const per = p.ordered.map((x) => ({ x, m: list.filter((s) => s.pathId === x.id).reduce((t, s) => t + s.minutes, 0) })).filter((y) => y.m)
-              return (
-                <button
-                  key={k}
-                  className={`mcell ${k === today ? 'today' : ''} ${weekDays.includes(k) ? 'inweek' : ''} ${clash ? 'clash' : ''} ${free ? '' : 'busy'} ${k < today ? 'past' : ''}`}
-                  onClick={() => goWeek(k)}
-                >
-                  <span className="mcell-num">{Number(k.slice(8))}</span>
-                  {per.map(({ x, m }) => (
-                    <span key={x.id} className={`mcell-bar ${dim(x.id)}`} style={{ background: x.color, width: `${Math.min(100, (m / 120) * 100)}%` }} title={`${x.title}: ${hours(m)}`} />
-                  ))}
-                  {dues.map((x) => (
-                    <span key={x.id} className="mcell-due" style={{ color: x.color }} title={`${x.title} due`}>
-                      ◆ due
-                    </span>
-                  ))}
-                  {list.length > 0 && <span className="mcell-sum">{sum(list)}</span>}
-                </button>
-              )
-            })}
-          </div>
-        </section>
-
         {/* ---------- WEEK ---------- */}
         <section className="cal-card" ref={weekRef as React.RefObject<HTMLElement>}>
           <header className="cal-card-head">
@@ -467,6 +323,150 @@ export function Schedule(p: Props) {
             />
           </section>
         )}
+
+        {/* ---------- MONTH ---------- */}
+        <section className="cal-card">
+          <header className="cal-card-head">
+            <div className="cal-card-title static">
+              <span className="column-kicker">Month</span>
+              <h3>{first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</h3>
+              <span className="muted">{sum(sessions.filter((s) => s.date.startsWith(month)))} planned</span>
+            </div>
+            <span className="cal-nav">
+              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm - 2, 1)).slice(0, 7))} aria-label="Previous month">
+                ‹
+              </button>
+              <button className="icon-btn" onClick={() => setMonth(dateKey(new Date(my, mm, 1)).slice(0, 7))} aria-label="Next month">
+                ›
+              </button>
+            </span>
+          </header>
+          <div className="mgrid">
+            {DAY.map((d) => (
+              <span key={d} className="mgrid-head">
+                {d}
+              </span>
+            ))}
+            {cells.map((k, i) => {
+              if (!k) return <span key={`b${i}`} />
+              const list = byDate.get(k) ?? []
+              const dues = dueOn(k)
+              const clash = list.some(lateSession)
+              const free = blocksOn(parse(k), availability).length > 0
+              const per = p.ordered.map((x) => ({ x, m: list.filter((s) => s.pathId === x.id).reduce((t, s) => t + s.minutes, 0) })).filter((y) => y.m)
+              return (
+                <button
+                  key={k}
+                  className={`mcell ${k === today ? 'today' : ''} ${weekDays.includes(k) ? 'inweek' : ''} ${clash ? 'clash' : ''} ${free ? '' : 'busy'} ${k < today ? 'past' : ''}`}
+                  onClick={() => goWeek(k)}
+                >
+                  <span className="mcell-num">{Number(k.slice(8))}</span>
+                  {per.map(({ x, m }) => (
+                    <span key={x.id} className={`mcell-bar ${dim(x.id)}`} style={{ background: x.color, width: `${Math.min(100, (m / 120) * 100)}%` }} title={`${x.title}: ${hours(m)}`} />
+                  ))}
+                  {dues.map((x) => (
+                    <span key={x.id} className="mcell-due" style={{ color: x.color }} title={`${x.title} due`}>
+                      ◆ due
+                    </span>
+                  ))}
+                  {list.length > 0 && <span className="mcell-sum">{sum(list)}</span>}
+                </button>
+              )
+            })}
+          </div>
+        </section>
+
+        {/* ---------- YEAR ---------- */}
+        <section className={`cal-card ${yearOpen ? 'open' : ''}`}>
+          <header className="cal-card-head">
+            <button className="cal-card-title" onClick={() => setYearOpen((o) => !o)} aria-expanded={yearOpen}>
+              <span className="column-kicker">Year</span>
+              <h3>{year}</h3>
+              <span className="muted">{yearOpen ? 'Hide the weekly load ▴' : 'Show the full year ▾'}</span>
+            </button>
+            <span className="cal-nav">
+              <button className="icon-btn" onClick={() => setYear(year - 1)} aria-label="Previous year">
+                ‹
+              </button>
+              <button className="icon-btn" onClick={() => setYear(year + 1)} aria-label="Next year">
+                ›
+              </button>
+            </span>
+          </header>
+          <div className="gantt">
+            <div className="gantt-months">
+              <span />
+              <div>
+                {MONTHS.map((m, i) => {
+                  const k = `${year}-${String(i + 1).padStart(2, '0')}`
+                  return (
+                    <button key={m} className={month === k ? 'on' : ''} onClick={() => setMonth(k)}>
+                      {m}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            {p.ordered.map((x) => {
+              const mine = sessions.filter((s) => s.pathId === x.id)
+              const o = outlook.find((y) => y.pathId === x.id)
+              const firstS = mine[0]?.date
+              const lastS = mine[mine.length - 1]?.date
+              const dated = timingOf(x, p.meta) === 'date' && x.due
+              const lateFrom = dated && lastS && lastS > x.due! ? x.due! : ''
+              return (
+                <div key={x.id} className={`gantt-row ${dim(x.id)}`} style={{ '--pc': x.color } as React.CSSProperties}>
+                  <button className="gantt-label" onClick={() => p.onFocusPath(focus?.id === x.id ? '' : x.id)} title={x.title}>
+                    <i className="path-dot" /> {x.title}
+                  </button>
+                  <div className="gantt-track">
+                    {MONTHS.map((_, i) => (
+                      <i key={i} className="gantt-grid" style={{ left: `${(i / 12) * 100}%` }} />
+                    ))}
+                    {inYear(today) && <i className="gantt-today" style={{ left: `${pos(today)}%` }} />}
+                    {firstS && lastS && (firstS <= `${year}-12-31` && lastS >= `${year}-01-01`) && (
+                      <div
+                        className="gantt-bar"
+                        style={{ left: `${pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS)}%`, width: `${Math.max(0.8, pos(lastS) - pos(firstS < `${year}-01-01` ? `${year}-01-01` : firstS))}%` }}
+                        title={`${fmt(firstS)} → ${fmt(lastS)}`}
+                      />
+                    )}
+                    {lateFrom && inYear(lateFrom) && (
+                      <div className="gantt-late" style={{ left: `${pos(lateFrom)}%`, width: `${Math.max(0.8, pos(lastS!) - pos(lateFrom))}%` }} title="Past its due date" />
+                    )}
+                    {dated && inYear(x.due!) && <i className={`gantt-due ${o?.late ? 'late' : ''}`} style={{ left: `${pos(x.due!)}%` }} title={`Due ${fmt(x.due!)}`} />}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          {yearOpen && (
+            <div className="load">
+              <div className="load-legend">
+                Hours per week, stacked by path · <span className="load-free-key" /> free time
+              </div>
+              <div className="load-bars">
+                {weeks.map((w) => (
+                  <button
+                    key={w.start}
+                    className={`load-week ${weekDays[0] === w.start ? 'on' : ''}`}
+                    onClick={() => goWeek(w.start)}
+                    title={`Week of ${fmt(w.start)}: ${hours(w.total)} of ${hours(w.free)} free`}
+                  >
+                    <i className="load-free" style={{ height: `${(w.free / maxWeek) * 100}%` }} />
+                    <span className="load-stack" style={{ height: `${(w.total / maxWeek) * 100}%` }}>
+                      {p.ordered
+                        .filter((x) => w.byPath.get(x.id))
+                        .map((x) => (
+                          <i key={x.id} className={dim(x.id)} style={{ flex: w.byPath.get(x.id), background: x.color }} />
+                        ))}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )

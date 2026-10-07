@@ -3456,22 +3456,6 @@ mark.hl-active {
   color: var(--neon);
   background: var(--neon-soft);
 }
-.path-sort {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 0 4px 12px;
-  font-size: 13px;
-  color: var(--text-dim);
-}
-.path-sort select {
-  padding: 5px 8px;
-  border-radius: 8px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
 .path-tile.status-archived {
   opacity: 0.6;
 }
@@ -3589,18 +3573,49 @@ mark.hl-active {
   color: var(--neon);
 }
 
-/* Paths mode: the list lives in the left panel */
-.path-rail .path-new {
-  margin: 0 0 10px;
+/* Paths mode: the list lives in the left panel, laid out like Cal's (slim top line, buttons at the bottom) */
+.rail.rail-paths {
+  display: flex;
+  flex-direction: column;
 }
-.path-rail .path-new button {
+.path-rail {
   flex: 1;
-  padding: 0 10px;
+  display: flex;
+  flex-direction: column;
 }
-.path-rail .path-filter,
-.path-rail .path-sort {
-  margin-left: 0;
-  margin-right: 0;
+.path-rail .tiles {
+  flex: 1;
+}
+.path-tools {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px 10px;
+}
+.path-tools select {
+  flex: 1 1 0;
+  min-width: 0;
+  height: 30px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+}
+.path-rail .path-new {
+  margin: 0;
+  padding: 10px 4px 0;
+  gap: 6px;
+  flex-wrap: nowrap;
+}
+.path-rail .path-new .free-chip {
+  margin: 0;
+  white-space: nowrap;
+}
+.path-rail .path-new .free-chip.on {
+  color: var(--neon);
+  border-color: var(--neon);
 }
 .narrow-only {
   display: none;

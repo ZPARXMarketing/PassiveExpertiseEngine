@@ -899,7 +899,7 @@ export default function App() {
           {showUsage && <Usage />}
         </header>
 
-        <aside className={`rail ${tab === 'cal' ? 'rail-cal' : ''}`}>
+        <aside className={`rail ${tab === 'cal' ? 'rail-cal' : tab === 'paths' ? 'rail-paths' : ''}`}>
           {tab === 'paths' && store ? (
             <>
               <div className="rail-head">

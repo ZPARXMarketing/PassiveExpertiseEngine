@@ -85,38 +85,23 @@ export function PathList(p: Props) {
   const { counts, list, left } = useList(p)
   return (
     <div className="path-rail">
-      <div className="path-new">
-        <button className={`btn-neon ${selected === 'new' ? 'on' : ''}`} onClick={() => onSelect('new')}>
-          ✦ New with AI
-        </button>
-        <button
-          className="btn-ghost"
-          onClick={async () => {
-            const made = await p.onSave(blankPath(paths.length))
-            onSelect(made.id)
-          }}
-        >
-          + Empty
-        </button>
-      </div>
-      <div className="path-filter" role="tablist" aria-label="Show">
-        {(['all', 'scheduled', 'unscheduled', 'archived'] as Filter[]).map((f) => (
-          <button key={f} role="tab" aria-selected={filter === f} className={filter === f ? 'on' : ''} onClick={() => onFilter(f)}>
-            {f === 'all' ? 'All' : f === 'scheduled' ? 'Scheduled' : f === 'unscheduled' ? 'Not scheduled' : 'Archived'}{' '}
-            <span className="count">{counts[f]}</span>
-          </button>
-        ))}
-      </div>
-      <label className="path-sort">
-        Sort
-        <select value={sort} onChange={(e) => onSort(e.target.value as PathSort)}>
+      {/* one slim line on top, like Cal's; new-path buttons sit at the bottom */}
+      <div className="path-tools">
+        <select value={filter} onChange={(e) => onFilter(e.target.value as Filter)} aria-label="Show">
+          {(['all', 'scheduled', 'unscheduled', 'archived'] as Filter[]).map((f) => (
+            <option key={f} value={f}>
+              {f === 'all' ? 'All' : f === 'scheduled' ? 'Scheduled' : f === 'unscheduled' ? 'Not scheduled' : 'Archived'} ({counts[f]})
+            </option>
+          ))}
+        </select>
+        <select value={sort} onChange={(e) => onSort(e.target.value as PathSort)} aria-label="Sort">
           {SORTS.map(([k, label]) => (
             <option key={k} value={k}>
               {label}
             </option>
           ))}
         </select>
-      </label>
+      </div>
       {!list.length && <p className="rail-empty">{paths.length ? 'No paths here.' : 'No paths yet.'}</p>}
       <ol className="tiles">
         {list.map((x) => {
@@ -149,6 +134,20 @@ export function PathList(p: Props) {
           )
         })}
       </ol>
+      <div className="path-new">
+        <button className={`free-chip ${selected === 'new' ? 'on' : ''}`} onClick={() => onSelect('new')}>
+          ✦ New with AI
+        </button>
+        <button
+          className="free-chip"
+          onClick={async () => {
+            const made = await p.onSave(blankPath(paths.length))
+            onSelect(made.id)
+          }}
+        >
+          + Empty
+        </button>
+      </div>
     </div>
   )
 }

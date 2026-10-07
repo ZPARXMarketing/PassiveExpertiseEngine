@@ -1163,7 +1163,8 @@ button:disabled {
 }
 
 .lib-search {
-  flex: 1 1 240px;
+  flex: 1 1 160px;
+  min-width: 0;
   height: 42px;
   padding: 0 16px;
   border-radius: 999px;
@@ -1174,31 +1175,6 @@ button:disabled {
 
 .lib-search:focus {
   border-color: var(--neon);
-}
-
-.lib-filters {
-  display: flex;
-  gap: 6px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.lib-filters button {
-  height: 42px;
-  padding: 0 14px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.lib-filters button.on {
-  border-color: var(--neon);
-  color: var(--neon);
-  background: var(--neon-soft);
 }
 
 .lib-empty {
@@ -2527,24 +2503,6 @@ button:disabled {
   flex-wrap: wrap;
 }
 
-.lib-sort {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-right: auto;
-}
-
-.lib-sort select {
-  height: 38px;
-  padding: 0 10px;
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  background: var(--surface);
-  color: var(--text);
-}
-
 .lib-fold {
   height: 38px;
   padding: 0 14px;
@@ -3448,9 +3406,6 @@ mark.hl-active {
   min-width: 0;
   overflow: hidden;
 }
-.lib-compact {
-  display: none;
-}
 @media (max-width: 900px) {
   .topbar .brand {
     display: none;
@@ -3468,32 +3423,6 @@ mark.hl-active {
   .pw-switch svg {
     width: 24px;
   }
-  /* Library filters: one row of dropdowns instead of two rows of chips */
-  .library .lib-filters,
-  .library .lib-buckets {
-    display: none;
-  }
-  .library .lib-compact {
-    display: flex;
-    gap: 8px;
-  }
-  .lib-compact select {
-    height: 38px;
-    padding: 0 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border-strong);
-    background: var(--surface);
-    color: var(--text);
-    font: inherit;
-    font-size: 14px;
-  }
-  .library .lib-bar {
-    flex-wrap: wrap;
-    align-items: center;
-  }
-  .library .lib-search {
-    flex: 1 1 100%;
-  }
 }
 @media (max-width: 780px) {
   /* not enough room for the spend meter in the bar; it's still in Settings */
@@ -3502,23 +3431,6 @@ mark.hl-active {
   }
 }
 
-@media (max-width: 900px) {
-  /* search on its own line, then Subject / Show / Colour / Sort on one line */
-  .library .lib-compact,
-  .library .lib-tools {
-    flex: 0 1 auto;
-    margin: 0;
-  }
-  .library .lib-sort {
-    font-size: 0;
-  }
-  .library .lib-sort select {
-    font-size: 14px;
-  }
-  .lib-compact select {
-    max-width: 150px;
-  }
-}
 .lib-pick {
   max-width: 360px;
   margin: 18px auto 0;
@@ -4231,4 +4143,91 @@ mark.hl-active {
 }
 .wsess.on {
   box-shadow: var(--glow-card);
+}
+
+/* Library: one Filter button; type, colour and sort live in its pop-out */
+.lib-bar {
+  flex-wrap: nowrap;
+  align-items: center;
+}
+.lib-filter-wrap {
+  position: relative;
+  flex: none;
+}
+.lib-filter-btn {
+  height: 42px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--text-dim);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.lib-filter-btn.on {
+  border-color: var(--neon);
+  color: var(--neon);
+}
+.lib-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  z-index: 20;
+  width: min(380px, calc(100vw - 32px));
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.lib-pop-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.lib-pop-sec .path-filter {
+  margin: 0;
+}
+.lib-pop-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.lib-pop-sec select {
+  height: 38px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+}
+.lib-pop-subject {
+  display: none;
+}
+.lib-pop-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.lib-pop-foot button {
+  height: 36px;
+  padding: 0 16px;
+}
+.library .lib-tools {
+  flex: none;
+  flex-basis: auto;
+}
+@media (max-width: 900px) {
+  .lib-pop-subject {
+    display: flex;
+  }
 }

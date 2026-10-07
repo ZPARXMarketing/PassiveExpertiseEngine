@@ -68,10 +68,10 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Study tools toolbar stays frozen** at the top of the chapter while you scroll.
 - **Spend meter** (top right): OpenRouter spend on the site's key — all time · week · today, to
   three decimals. Turn it off in Settings.
-- **Library tab** (pinned in the top bar). Filter by bucket with the colour chips, or **Sort → Group
-  by bucket** to see every highlight under its bucket with a link back to its chapter. ☆ any course or chapter, or highlight chapter text →
+- **Library tab** (pinned in the top bar). Search, plus one **Filter** button that pops open type, highlight colour and sort
+  (badge = how many are changed; Reset / Done). **Sort → By colour** to see every highlight under its bucket with a link back to its chapter. ☆ any course or chapter, or highlight chapter text →
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
-  in catalog order, with search, type filters, sort (course order / recently saved / A–Z), fold any
+  in catalog order (or recently saved / A–Z), fold any
   subject or course, Open all / Close all — and it reopens exactly how you left it.
 
 ## Study tools

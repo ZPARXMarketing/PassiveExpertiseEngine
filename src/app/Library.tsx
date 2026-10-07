@@ -236,6 +236,19 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
 
   const allIds = byBucket.map((g) => `bucket:${g.bucket.key}`)
 
+  // one Filter button instead of rows of chips; the badge counts what's changed from the default
+  const [pop, setPop] = useState(false)
+  const popRef = useRef<HTMLDivElement>(null)
+  const active = Number(filter !== 'all') + Number(bucket !== 'all') + Number(sort !== 'catalog')
+  useEffect(() => {
+    if (!pop) return
+    const close = (e: PointerEvent) => {
+      if (!popRef.current?.contains(e.target as Node)) setPop(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [pop])
+
   const FILTERS: [Filter, string][] = [
     ['all', 'All'],
     ['course', 'Courses'],
@@ -254,87 +267,102 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
           placeholder="Search your library"
           aria-label="Search library"
         />
-        <div className="lib-filters" role="tablist">
-          {FILTERS.map(([key, label]) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={filter === key}
-              className={filter === key ? 'on' : ''}
-              onClick={() => setFilter(key)}
-            >
-              {label} <span className="count">{counts[key]}</span>
-            </button>
-          ))}
+        <div className="lib-filter-wrap" ref={popRef}>
+          <button
+            className={`lib-filter-btn ${active ? 'on' : ''}`}
+            onClick={() => setPop((o) => !o)}
+            aria-expanded={pop}
+            aria-label="Filter and sort"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Filter{active > 0 && <span className="count">{active}</span>}
+          </button>
+          {pop && (
+            <div className="lib-pop" role="dialog" aria-label="Filter and sort">
+              {/* smaller windows have no subject list on the left, so it's picked here */}
+              <div className="lib-pop-sec lib-pop-subject">
+                <span className="lib-pop-label">Subject</span>
+                <select value={subjectId} onChange={(e) => onPickSubject(e.target.value)} aria-label="Subject">
+                  <option value="">Subject…</option>
+                  {savedSubjects.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.title} ({x.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="lib-pop-sec">
+                <span className="lib-pop-label">Show</span>
+                <div className="path-filter" role="tablist">
+                  {FILTERS.map(([key, label]) => (
+                    <button key={key} role="tab" aria-selected={filter === key} className={filter === key ? 'on' : ''} onClick={() => setFilter(key)}>
+                      {label} {counts[key]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {shownBuckets.length > 0 && perBucket.size > 0 && (
+                <div className="lib-pop-sec">
+                  <span className="lib-pop-label">Highlight colour</span>
+                  <div className="lib-buckets" role="group" aria-label="Filter by colour">
+                    <button className={bucket === 'all' ? 'on' : ''} onClick={() => setBucket('all')}>
+                      All colours
+                    </button>
+                    {shownBuckets.map((b) => (
+                      <button
+                        key={b.key}
+                        className={bucket === b.key ? 'on' : ''}
+                        style={{ '--hl': b.color } as React.CSSProperties}
+                        onClick={() => setBucket(bucket === b.key ? 'all' : b.key)}
+                      >
+                        <i />
+                        {b.name} <span className="count">{perBucket.get(b.key) ?? 0}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="lib-pop-sec">
+                <span className="lib-pop-label">Sort</span>
+                <div className="path-filter">
+                  {SORTS.map(([k, label]) => (
+                    <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="lib-pop-foot">
+                <button
+                  className="btn-ghost"
+                  disabled={!active}
+                  onClick={() => {
+                    setFilter('all')
+                    setBucket('all')
+                    setSort('catalog')
+                  }}
+                >
+                  Reset
+                </button>
+                <button className="btn-neon" onClick={() => setPop(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        {shownBuckets.length > 0 && perBucket.size > 0 && (
-          <div className="lib-buckets" role="group" aria-label="Filter by bucket">
-            <button className={bucket === 'all' ? 'on' : ''} onClick={() => setBucket('all')}>
-              All colours
+        {sort === 'bucket' && (
+          <div className="lib-tools">
+            <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set())} disabled={!closed.size}>
+              Open all
             </button>
-            {shownBuckets.map((b) => (
-              <button
-                key={b.key}
-                className={bucket === b.key ? 'on' : ''}
-                style={{ '--hl': b.color } as React.CSSProperties}
-                onClick={() => setBucket(bucket === b.key ? 'all' : b.key)}
-              >
-                <i />
-                {b.name} <span className="count">{perBucket.get(b.key) ?? 0}</span>
-              </button>
-            ))}
+            <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set(allIds))} disabled={closed.size >= allIds.length}>
+              Close all
+            </button>
           </div>
         )}
-        {/* smaller windows: the two chip rows become two dropdowns on the same line */}
-        <div className="lib-compact">
-          <select value={subjectId} onChange={(e) => onPickSubject(e.target.value)} aria-label="Subject">
-            <option value="">Subject…</option>
-            {savedSubjects.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.title} ({x.count})
-              </option>
-            ))}
-          </select>
-          <select value={filter} onChange={(e) => setFilter(e.target.value as Filter)} aria-label="Show">
-            {FILTERS.map(([key, label]) => (
-              <option key={key} value={key}>
-                {label} ({counts[key]})
-              </option>
-            ))}
-          </select>
-          {shownBuckets.length > 0 && perBucket.size > 0 && (
-            <select value={bucket} onChange={(e) => setBucket(e.target.value)} aria-label="Colour">
-              <option value="all">All colours</option>
-              {shownBuckets.map((b) => (
-                <option key={b.key} value={b.key}>
-                  {b.name} ({perBucket.get(b.key) ?? 0})
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-        <div className="lib-tools">
-          <label className="lib-sort">
-            Sort
-            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              {SORTS.map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {sort === 'bucket' && (
-            <>
-          <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set())} disabled={!closed.size}>
-            Open all
-          </button>
-          <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set(allIds))} disabled={closed.size >= allIds.length}>
-            Close all
-          </button>
-            </>
-          )}
-        </div>
       </div>
 
       {saved.length + lectures.length === 0 ? (

@@ -1,7 +1,9 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { LectureControl } from './Study.tsx'
-import { chainIds, lectureTitle, type Bucket, type Extra, type LectureBody, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
+import { chainIds, lectureTitle, type Bucket, type Extra, type LectureBody, type Path, type SavedItem, type Syllabus, type TreeNode } from './types.ts'
 import { colorOf } from './highlight.ts'
+import { Strip, useFit } from './fit.tsx'
+import type { PanelWidth } from './PanelWidth.tsx'
 
 type Filter = 'all' | 'course' | 'chapter' | 'snippet' | 'lecture'
 type Sort = 'catalog' | 'recent' | 'az' | 'bucket'
@@ -15,10 +17,12 @@ interface View {
   bucket: string
   closed: string[]
   scroll: number
+  /** browse columns: selected subject, branch, course, chapter */
+  sel: string[]
 }
 const VIEW_KEY = 'xe-library-view-v1'
 function loadView(): View {
-  const base: View = { filter: 'all', query: '', sort: 'catalog', bucket: 'all', closed: [], scroll: 0 }
+  const base: View = { filter: 'all', query: '', sort: 'catalog', bucket: 'all', closed: [], scroll: 0, sel: [] }
   try {
     return { ...base, ...(JSON.parse(localStorage.getItem(VIEW_KEY) ?? '{}') as Partial<View>) }
   } catch {
@@ -43,6 +47,15 @@ interface Props {
   onOpen: (nodeId: string) => void
   onRemove: (item: SavedItem) => void
   buckets: Bucket[]
+  paths: Path[]
+  /** add a chapter (or a course's chapters) to a path; 'new' makes one. Resolves to the path's name. */
+  onAddToPath: (nodeId: string, pathId: string) => Promise<string>
+  panelWidth: PanelWidth
+  /** subject picked in the left panel */
+  subjectId: string
+  /** saved subjects (same order as the left panel), for narrow windows where that panel is tucked away */
+  savedSubjects: { id: string; title: string; count: number }[]
+  onPickSubject: (id: string) => void
 }
 
 interface ChapterGroup {
@@ -83,28 +96,29 @@ const SORTS: [Sort, string][] = [
   ['catalog', 'Course order'],
   ['recent', 'Recently saved'],
   ['az', 'A–Z'],
-  ['bucket', 'Group by bucket'],
+  ['bucket', 'By colour'],
 ]
 
 /**
  * Everything saved, always filed the same way: subject → branch → course → chapter
  * (catalog order), highlights under the chapter they came from. Nothing to organise by hand.
  */
-export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets }: Props) {
+export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onOpen, onRemove, buckets, paths, onAddToPath, panelWidth, subjectId, savedSubjects, onPickSubject }: Props) {
   const initial = useMemo(loadView, [])
   const [filter, setFilter] = useState<Filter>(initial.filter)
   const [query, setQuery] = useState(initial.query)
   const [sort, setSort] = useState<Sort>(initial.sort)
   const [bucket, setBucket] = useState(initial.bucket)
   const [closed, setClosed] = useState<Set<string>>(new Set(initial.closed))
+  const [sel, setSel] = useState<string[]>(initial.sel)
   const scrollRef = useRef<HTMLElement>(null)
   const scrollPos = useRef(initial.scroll)
   const byPos = sorter(sort)
 
   // remember the view (and where you'd scrolled to) every time it changes or you leave
   useEffect(
-    () => saveView({ filter, query, sort, bucket, closed: [...closed], scroll: scrollPos.current }),
-    [filter, query, sort, bucket, closed],
+    () => saveView({ filter, query, sort, bucket, closed: [...closed], scroll: scrollPos.current, sel }),
+    [filter, query, sort, bucket, closed, sel],
   )
   useEffect(
     () => () => saveView({ ...loadView(), scroll: scrollPos.current }),
@@ -220,7 +234,20 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
     scrollRef.current.scrollTop = scrollPos.current
   }, [tree])
 
-  const allIds = tree.flatMap((s) => [s.node.id, ...[...s.branches.values()].flatMap((b) => [...b.courses.keys()])])
+  const allIds = byBucket.map((g) => `bucket:${g.bucket.key}`)
+
+  // one Filter button instead of rows of chips; the badge counts what's changed from the default
+  const [pop, setPop] = useState(false)
+  const popRef = useRef<HTMLDivElement>(null)
+  const active = Number(filter !== 'all') + Number(bucket !== 'all') + Number(sort !== 'catalog')
+  useEffect(() => {
+    if (!pop) return
+    const close = (e: PointerEvent) => {
+      if (!popRef.current?.contains(e.target as Node)) setPop(false)
+    }
+    document.addEventListener('pointerdown', close)
+    return () => document.removeEventListener('pointerdown', close)
+  }, [pop])
 
   const FILTERS: [Filter, string][] = [
     ['all', 'All'],
@@ -231,7 +258,7 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
   ]
 
   return (
-    <section className="library" ref={scrollRef} onScroll={(e) => (scrollPos.current = e.currentTarget.scrollTop)}>
+    <section className={`library ${sort === 'bucket' ? '' : 'browse'}`} ref={scrollRef} onScroll={(e) => (scrollPos.current = e.currentTarget.scrollTop)}>
       <div className="lib-bar">
         <input
           className="lib-search"
@@ -240,55 +267,102 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
           placeholder="Search your library"
           aria-label="Search library"
         />
-        <div className="lib-filters" role="tablist">
-          {FILTERS.map(([key, label]) => (
-            <button
-              key={key}
-              role="tab"
-              aria-selected={filter === key}
-              className={filter === key ? 'on' : ''}
-              onClick={() => setFilter(key)}
-            >
-              {label} <span className="count">{counts[key]}</span>
-            </button>
-          ))}
+        <div className="lib-filter-wrap" ref={popRef}>
+          <button
+            className={`lib-filter-btn ${active ? 'on' : ''}`}
+            onClick={() => setPop((o) => !o)}
+            aria-expanded={pop}
+            aria-label="Filter and sort"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+              <path d="M4 6h16M7 12h10M10 18h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            Filter{active > 0 && <span className="count">{active}</span>}
+          </button>
+          {pop && (
+            <div className="lib-pop" role="dialog" aria-label="Filter and sort">
+              {/* smaller windows have no subject list on the left, so it's picked here */}
+              <div className="lib-pop-sec lib-pop-subject">
+                <span className="lib-pop-label">Subject</span>
+                <select value={subjectId} onChange={(e) => onPickSubject(e.target.value)} aria-label="Subject">
+                  <option value="">Subject…</option>
+                  {savedSubjects.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.title} ({x.count})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="lib-pop-sec">
+                <span className="lib-pop-label">Show</span>
+                <div className="path-filter" role="tablist">
+                  {FILTERS.map(([key, label]) => (
+                    <button key={key} role="tab" aria-selected={filter === key} className={filter === key ? 'on' : ''} onClick={() => setFilter(key)}>
+                      {label} {counts[key]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {shownBuckets.length > 0 && perBucket.size > 0 && (
+                <div className="lib-pop-sec">
+                  <span className="lib-pop-label">Highlight colour</span>
+                  <div className="lib-buckets" role="group" aria-label="Filter by colour">
+                    <button className={bucket === 'all' ? 'on' : ''} onClick={() => setBucket('all')}>
+                      All colours
+                    </button>
+                    {shownBuckets.map((b) => (
+                      <button
+                        key={b.key}
+                        className={bucket === b.key ? 'on' : ''}
+                        style={{ '--hl': b.color } as React.CSSProperties}
+                        onClick={() => setBucket(bucket === b.key ? 'all' : b.key)}
+                      >
+                        <i />
+                        {b.name} <span className="count">{perBucket.get(b.key) ?? 0}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="lib-pop-sec">
+                <span className="lib-pop-label">Sort</span>
+                <div className="path-filter">
+                  {SORTS.map(([k, label]) => (
+                    <button key={k} className={sort === k ? 'on' : ''} onClick={() => setSort(k)}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="lib-pop-foot">
+                <button
+                  className="btn-ghost"
+                  disabled={!active}
+                  onClick={() => {
+                    setFilter('all')
+                    setBucket('all')
+                    setSort('catalog')
+                  }}
+                >
+                  Reset
+                </button>
+                <button className="btn-neon" onClick={() => setPop(false)}>
+                  Done
+                </button>
+              </div>
+            </div>
+          )}
         </div>
-        {shownBuckets.length > 0 && perBucket.size > 0 && (
-          <div className="lib-buckets" role="group" aria-label="Filter by bucket">
-            <button className={bucket === 'all' ? 'on' : ''} onClick={() => setBucket('all')}>
-              All colours
+        {sort === 'bucket' && (
+          <div className="lib-tools">
+            <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set())} disabled={!closed.size}>
+              Open all
             </button>
-            {shownBuckets.map((b) => (
-              <button
-                key={b.key}
-                className={bucket === b.key ? 'on' : ''}
-                style={{ '--hl': b.color } as React.CSSProperties}
-                onClick={() => setBucket(bucket === b.key ? 'all' : b.key)}
-              >
-                <i />
-                {b.name} <span className="count">{perBucket.get(b.key) ?? 0}</span>
-              </button>
-            ))}
+            <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set(allIds))} disabled={closed.size >= allIds.length}>
+              Close all
+            </button>
           </div>
         )}
-        <div className="lib-tools">
-          <label className="lib-sort">
-            Sort
-            <select value={sort} onChange={(e) => setSort(e.target.value as Sort)}>
-              {SORTS.map(([k, label]) => (
-                <option key={k} value={k}>
-                  {label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set())} disabled={!closed.size}>
-            Open all
-          </button>
-          <button className="btn-ghost lib-fold" onClick={() => setClosed(new Set(allIds))} disabled={closed.size >= allIds.length}>
-            Close all
-          </button>
-        </div>
       </div>
 
       {saved.length + lectures.length === 0 ? (
@@ -343,100 +417,277 @@ export function Library({ saved, lectures, nodes, docs, done, loadAncestors, onO
       ) : tree.length === 0 ? (
         <p className="lib-empty">{missing.length ? 'Loading…' : 'No matches.'}</p>
       ) : (
-        tree.map((s) => (
-          <details key={s.node.id} className="lib-subject" open={!closed.has(s.node.id)}>
-            <summary
-              onClick={(e) => {
-                e.preventDefault()
-                toggle(s.node.id)
-              }}
-            >
-              <span>{s.node.title}</span>
-              <span className="count">{s.count}</span>
-            </summary>
-            {[...s.branches.values()].sort(byPos).map((b) => (
-              <div key={b.node.id} className="lib-branch">
-                <div className="lib-branch-title">{b.node.title}</div>
-                {[...b.courses.values()].sort(byPos).map((c) => {
-                  const syl = docs[c.node.id] as Syllabus | undefined
-                  return (
-                    <article key={c.node.id} className={`lib-course ${closed.has(c.node.id) ? 'folded' : ''}`}>
-                      <header>
-                        <button
-                          className="lib-chev"
-                          onClick={() => toggle(c.node.id)}
-                          aria-expanded={!closed.has(c.node.id)}
-                          aria-label={closed.has(c.node.id) ? 'Show chapters' : 'Hide chapters'}
-                        >
-                          ▾
-                        </button>
-                        <button className="lib-open" onClick={() => onOpen(c.node.id)}>
-                          {c.node.meta.code && <span className="code">{c.node.meta.code}</span>}
-                          <span className="lib-course-title">{c.node.title}</span>
-                          {closed.has(c.node.id) && !!c.chapters.size && <span className="count">{c.chapters.size}</span>}
-                        </button>
-                        {c.saved && (
-                          <button className="lib-x" onClick={() => onRemove(c.saved!)} aria-label="Remove course">
-                            ★
-                          </button>
-                        )}
-                      </header>
-                      {!closed.has(c.node.id) && c.saved && (syl?.description || c.node.summary) && (
-                        <p className="lib-desc">{syl?.description || c.node.summary}</p>
-                      )}
-                      {!closed.has(c.node.id) && [...c.chapters.values()].sort(byPos).map((ch) => (
-                        <div key={ch.node.id} className="lib-chapter">
-                          <div className="lib-row">
-                            <button className="lib-open" onClick={() => onOpen(ch.node.id)}>
-                              <span className="tile-num">Ch {ch.node.position + 1}</span>
-                              <span>{ch.node.title}</span>
-                              {done.has(ch.node.id) && <span className="tick">✓</span>}
-                            </button>
-                            {ch.saved && (
-                              <button className="lib-x" onClick={() => onRemove(ch.saved!)} aria-label="Remove chapter">
-                                ★
-                              </button>
-                            )}
-                          </div>
-                          {ch.lectures.map((l) => {
-                            const b = l.body as LectureBody
-                            return (
-                              <div key={l.id} className="lib-lecture">
-                                <div className="lib-lecture-title">🎧 {lectureTitle(b)}</div>
-                                <LectureControl
-                                  id={l.id}
-                                  url={b.audioUrl}
-                                  title={lectureTitle(b)}
-                                  subtitle={ch.node.title}
-                                  fileName={b.fileName}
-                                />
-                              </div>
-                            )
-                          })}
-                          {ch.snippets
-                            .sort((a, b) => a.created_at.localeCompare(b.created_at))
-                            .map((sn) => (
-                              <blockquote
-                                key={sn.id}
-                                className="lib-snip"
-                                style={{ '--hl': colorOf(sn.color, buckets) } as React.CSSProperties}
-                              >
-                                <p>{sn.text}</p>
-                                <button className="lib-x" onClick={() => onRemove(sn)} aria-label="Remove highlight">
-                                  ×
-                                </button>
-                              </blockquote>
-                            ))}
-                        </div>
-                      ))}
-                    </article>
-                  )
-                })}
-              </div>
-            ))}
-          </details>
-        ))
+        <Browse
+          tree={tree}
+          sel={sel}
+          setSel={setSel}
+          byPos={byPos}
+          docs={docs}
+          done={done}
+          buckets={buckets}
+          paths={paths}
+          onOpen={onOpen}
+          onRemove={onRemove}
+          onAddToPath={onAddToPath}
+          panelWidth={panelWidth}
+          subjectId={subjectId}
+          savedSubjects={savedSubjects}
+          onPickSubject={onPickSubject}
+        />
       )}
     </section>
+  )
+}
+
+/** The library as columns, like Explore: subject → branch → course → chapter → what you saved there. */
+function Browse({
+  tree,
+  sel,
+  setSel,
+  byPos,
+  docs,
+  done,
+  buckets,
+  paths,
+  onOpen,
+  onRemove,
+  onAddToPath,
+  panelWidth,
+  subjectId,
+  savedSubjects,
+  onPickSubject,
+}: {
+  panelWidth: PanelWidth
+  subjectId: string
+  savedSubjects: { id: string; title: string; count: number }[]
+  onPickSubject: (id: string) => void
+  tree: SubjectGroup[]
+  sel: string[]
+  setSel: (s: string[]) => void
+  byPos: (a: Grouped, b: Grouped) => number
+  docs: Record<string, unknown>
+  done: Set<string>
+  buckets: Bucket[]
+  paths: Path[]
+  onOpen: (id: string) => void
+  onRemove: (item: SavedItem) => void
+  onAddToPath: (nodeId: string, pathId: string) => Promise<string>
+}) {
+  // follow the saved selection as far as it still exists; a level with one choice opens itself
+  // the subject is picked in the left panel, like Explore
+  const subject = tree.find((x) => x.node.id === subjectId)
+  const branches = subject ? [...subject.branches.values()].sort(byPos) : []
+  const branch = branches.find((x) => x.node.id === sel[1]) ?? (branches.length === 1 ? branches[0] : undefined)
+  const courses = branch ? [...branch.courses.values()].sort(byPos) : []
+  const course = courses.find((x) => x.node.id === sel[2]) ?? (courses.length === 1 ? courses[0] : undefined)
+  const chapters = course ? [...course.chapters.values()].sort(byPos) : []
+  const chapter = chapters.find((x) => x.node.id === sel[3])
+  const pick = (depth: number, id: string) => setSel([...[subject, branch, course].slice(0, depth).map((g) => g?.node.id ?? ''), id])
+
+  // columns that don't fit fold into strips, oldest first (tap one to open it again)
+  const [keep, setKeep] = useState(-1)
+  useEffect(() => setKeep(-1), [sel])
+  const shown = [!!subject, !!branch, !!course, !!chapter].filter(Boolean).length
+  const { ref: colsRef, folded } = useFit(
+    Array.from({ length: shown }, (_, i) => (i === 3 ? 300 : 250)),
+    keep,
+    panelWidth,
+  )
+  const strip = (i: number, kicker: string, picked?: string) =>
+    folded[i] ? <Strip key={`strip-${i}`} kicker={kicker} picked={picked} onOpen={() => setKeep(i)} /> : null
+
+  const count = (n: number) => <span className="count">{n}</span>
+  const branchCount = (b: BranchGroup) => [...b.courses.values()].reduce((t, c) => t + courseCount(c), 0)
+  const courseCount = (c: CourseGroup) =>
+    (c.saved ? 1 : 0) + [...c.chapters.values()].reduce((t, ch) => t + (ch.saved ? 1 : 0) + ch.snippets.length + ch.lectures.length, 0)
+  const chapterCount = (ch: ChapterGroup) => (ch.saved ? 1 : 0) + ch.snippets.length + ch.lectures.length
+
+  return (
+    <div className={`lib-cols pw-${panelWidth}`} ref={colsRef}>
+      {!subject && (
+        <div className="lib-empty">
+          <h2>Pick a subject</h2>
+          <p>Only what you’ve saved is here: starred courses and chapters, highlights and lectures.</p>
+          <ol className="tiles lib-pick">
+            {savedSubjects.map((x) => (
+              <li key={x.id} className="tile-wrap">
+                <button className="tile" onClick={() => onPickSubject(x.id)}>
+                  <span className="tile-title lib-tile-row">
+                    {x.title} <span className="count">{x.count}</span>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
+      {subject && (strip(0, subject.node.title, branch?.node.title) ?? (
+        <section className="column">
+          <header className="column-head">
+            <span className="column-kicker">Branches</span>
+            <h2>{subject.node.title}</h2>
+          </header>
+          <ol className="tiles">
+            {branches.map((g) => (
+              <li key={g.node.id} className="tile-wrap">
+                <button className={`tile ${branch === g ? 'active' : ''}`} onClick={() => pick(1, g.node.id)}>
+                  <span className="tile-title lib-tile-row">
+                    {g.node.title} {count(branchCount(g))}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+
+      {branch && (strip(1, branch.node.title, course?.node.title) ?? (
+        <section className="column">
+          <header className="column-head">
+            <span className="column-kicker">Courses</span>
+            <h2>{branch.node.title}</h2>
+          </header>
+          <ol className="tiles">
+            {courses.map((g) => (
+              <li key={g.node.id} className="tile-wrap">
+                <button className={`tile ${course === g ? 'active' : ''}`} onClick={() => pick(2, g.node.id)}>
+                  <span className="tile-top">
+                    {g.node.meta.code && <span className="code">{g.node.meta.code}</span>}
+                    {g.saved && <span className="lib-star">★</span>}
+                  </span>
+                  <span className="tile-title lib-tile-row">
+                    {g.node.title} {count(courseCount(g))}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+
+      {course && (strip(2, course.node.meta.code || course.node.title, chapter?.node.title) ?? (
+        <section className="column">
+          <header className="column-head">
+            <span className="column-kicker">{course.node.meta.code || 'Course'}</span>
+            <h2>{course.node.title}</h2>
+            {course.saved && ((docs[course.node.id] as Syllabus | undefined)?.description || course.node.summary) && (
+              <p className="column-desc">{(docs[course.node.id] as Syllabus | undefined)?.description || course.node.summary}</p>
+            )}
+            <div className="lib-actions">
+              <button className="btn-ghost" onClick={() => onOpen(course.node.id)}>
+                Open course
+              </button>
+              <AddToPath nodeId={course.node.id} paths={paths} onAdd={onAddToPath} label="+ Path (whole course)" />
+              {course.saved && (
+                <button className="btn-ghost" onClick={() => onRemove(course.saved!)}>
+                  ★ Unsave
+                </button>
+              )}
+            </div>
+          </header>
+          <ol className="tiles">
+            {chapters.map((g) => (
+              <li key={g.node.id} className="tile-wrap">
+                <button className={`tile ${chapter === g ? 'active' : ''}`} onClick={() => pick(3, g.node.id)}>
+                  <span className="tile-top">
+                    <span className="tile-num">Ch {g.node.position + 1}</span>
+                    {g.saved && <span className="lib-star">★</span>}
+                    {done.has(g.node.id) && <span className="tick">✓</span>}
+                  </span>
+                  <span className="tile-title lib-tile-row">
+                    {g.node.title} {count(chapterCount(g))}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+
+      {chapter && (
+        <section className="column lib-items">
+          <header className="column-head">
+            <span className="column-kicker">Chapter {chapter.node.position + 1}</span>
+            <h2>{chapter.node.title}</h2>
+            <div className="lib-actions">
+              <button className="btn-neon" onClick={() => onOpen(chapter.node.id)}>
+                Open chapter
+              </button>
+              <AddToPath nodeId={chapter.node.id} paths={paths} onAdd={onAddToPath} label="+ Path" />
+              {chapter.saved && (
+                <button className="btn-ghost" onClick={() => onRemove(chapter.saved!)}>
+                  ★ Unsave
+                </button>
+              )}
+            </div>
+          </header>
+          {chapter.lectures.map((l) => {
+            const b = l.body as LectureBody
+            return (
+              <div key={l.id} className="lib-lecture">
+                <div className="lib-lecture-title">🎧 {lectureTitle(b)}</div>
+                <LectureControl id={l.id} url={b.audioUrl} title={lectureTitle(b)} subtitle={chapter.node.title} fileName={b.fileName} />
+              </div>
+            )
+          })}
+          {[...chapter.snippets]
+            .sort((a, b) => a.created_at.localeCompare(b.created_at))
+            .map((sn) => (
+              <blockquote key={sn.id} className="lib-snip" style={{ '--hl': colorOf(sn.color, buckets) } as React.CSSProperties}>
+                <p>{sn.text}</p>
+                <button className="lib-x" onClick={() => onRemove(sn)} aria-label="Remove highlight">
+                  ×
+                </button>
+              </blockquote>
+            ))}
+          {!chapter.snippets.length && !chapter.lectures.length && <p className="sheet-note">Saved as a whole chapter.</p>}
+        </section>
+      )}
+    </div>
+  )
+}
+
+/** "+ Path": a native picker (easy on iPad) of your paths, or a new one. */
+export function AddToPath({
+  nodeId,
+  paths,
+  onAdd,
+  label,
+}: {
+  nodeId: string
+  paths: Path[]
+  onAdd: (nodeId: string, pathId: string) => Promise<string>
+  label: string
+}) {
+  const [note, setNote] = useState('')
+  return (
+    <label className="add-path btn-ghost">
+      {note || label}
+      <select
+        value=""
+        onChange={async (e) => {
+          const id = e.target.value
+          if (!id) return
+          try {
+            setNote(`Added to ${await onAdd(nodeId, id)} ✓`)
+          } catch (err) {
+            setNote(err instanceof Error ? err.message : 'Could not add it.')
+          }
+          setTimeout(() => setNote(''), 2500)
+        }}
+        aria-label="Add to a path"
+      >
+        <option value="">Add to…</option>
+        {paths
+          .filter((p) => !p.archived)
+          .map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        <option value="new">+ New path</option>
+      </select>
+    </label>
   )
 }

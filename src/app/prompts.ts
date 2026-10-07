@@ -10,6 +10,8 @@ export const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 export const DEFAULT_MODEL = 'deepseek/deepseek-chat'
 /** web-searching model with citations, used only for fact-checks */
 export const FACTCHECK_MODEL = 'perplexity/sonar'
+/** drafts Paths: reads pasted text, photos and PDFs of the assignment */
+export const PATH_MODEL = 'google/gemini-3.8-flash'
 
 export type GenKind =
   | 'branches'
@@ -23,6 +25,9 @@ export type GenKind =
   | 'fix'
   | 'lecture'
   | 'visual'
+  | 'path'
+  | 'availability'
+  | 'fit'
 
 const KINDS: GenKind[] = [
   'branches',
@@ -36,7 +41,19 @@ const KINDS: GenKind[] = [
   'fix',
   'lecture',
   'visual',
+  'path',
+  'availability',
+  'fit',
 ]
+
+/** A file the learner attached (photo or PDF of the assignment), as a data: URL. */
+export interface Attachment {
+  name: string
+  type: string
+  data: string
+}
+/** largest attachment accepted, as a data: URL (about 4 MB of file) */
+export const MAX_ATTACHMENT = 5_600_000
 
 export interface GenRequest {
   kind: GenKind
@@ -54,6 +71,16 @@ export interface GenRequest {
   issues?: string
   /** lecture: how long */
   length?: 'short' | 'medium' | 'long'
+  /** path: what the learner wants to be able to do */
+  goal?: string
+  /** path: pasted assignment / syllabus text. availability: what the learner typed */
+  material?: string
+  /** path: what the learner's library already has (subject | branch | code | course | chapters) */
+  inventory?: string
+  /** path: photos / PDFs of the assignment */
+  attachments?: Attachment[]
+  /** availability: today's date (YYYY-MM-DD, weekday) so "this Thursday" resolves */
+  today?: string
 }
 
 /** Lecture lengths: target words at a speaking pace of roughly 150 words a minute. */
@@ -225,6 +252,57 @@ Respond with one JSON object and nothing else:
 Only fill the fields your type uses. At most 4 series or bar groups, 12 categories,
 40 points per series, 8 slices, 10 nodes. Labels under 40 characters.`,
   },
+  path: {
+    maxTokens: 2600,
+    temperature: 0.3,
+    system: `You are the academic advisor of a top university. A learner has one specific goal
+(an assignment, exam, project or skill). Design the shortest sequential study path that
+gets them to excel at exactly that goal: the material it actually needs, in the order to
+learn it, with just enough foundations. Skip what the goal doesn't need.
+
+Place every step in a real university structure: subject > branch > course > chapter, the
+way a university catalog would file it (e.g. Mathematics > Calculus > MATH 151 Calculus I >
+Limits and Continuity). The learner's library is listed below: when a subject, branch,
+course or chapter there fits, use its name EXACTLY as written so it is reused. Only invent
+new ones where nothing fits, named the way a university would. Never invent facts about the
+assignment that the learner did not give you.
+
+Plain text, no markdown, no preamble. Format:
+
+TITLE: <short name for the path>
+FOCUS: <2 to 4 sentences: what matters most for this goal and how the path gets there>
+STEP: <subject> | <branch> | <course code> | <course title> | <chapter title> | <minutes> | <what to focus on in this chapter for this goal>
+
+6 to 16 STEP lines in learning order. Minutes = realistic focused study time for that
+chapter (20 to 120).`,
+  },
+  availability: {
+    maxTokens: 900,
+    temperature: 0,
+    system: `Turn a learner's description of when they can study into time blocks. Use 24-hour
+times. Weekdays are Sun Mon Tue Wed Thu Fri Sat. Resolve relative dates ("this Thursday",
+"next week") from today's date. Only free time for studying; leave out anything they say
+they are busy. If they give no times for a day, leave it out. No preamble. Lines:
+
+WEEKLY: <day> | <HH:MM start> | <HH:MM end>     (repeats every week)
+DATE: <YYYY-MM-DD> | <HH:MM start> | <HH:MM end>  (a one-off free block; replaces that day's weekly blocks)
+BUSY: <YYYY-MM-DD>                                (not free at all that day)`,
+  },
+  fit: {
+    maxTokens: 1500,
+    temperature: 0.2,
+    system: `A learner's study plan does not fit their free time. Propose the fewest changes that
+make it fit while protecting what matters most for each goal. You may: shorten a chapter
+(never below 15 minutes), drop a chapter that matters least for its goal, or change a
+path's timing: asap, date (with a due date) or none (no rush). Prefer shortening over
+dropping, and touch "no rush" paths before dated ones. Never move a due date the learner
+set unless nothing else works, and say so. Plain text, no preamble. Lines:
+
+SUMMARY: <one sentence: what changes and why it now fits>
+MIN: <path#>.<step#> | <new minutes> | <why>
+DROP: <path#>.<step#> | <why>
+TIMING: <path#> | <asap|date|none> | <YYYY-MM-DD or empty> | <why>`,
+  },
   fix: {
     maxTokens: 4000,
     temperature: 0.2,
@@ -240,6 +318,15 @@ same headings as the original:
 }
 
 function userPrompt(req: GenRequest): string {
+  if (req.kind === 'path')
+    return [
+      `Goal: ${req.goal ?? req.trail[0]}`,
+      req.material ? `\nWhat the learner pasted (assignment, rubric, syllabus or notes):\n${req.material.slice(0, 20000)}` : '',
+      req.attachments?.length ? `\n${req.attachments.length} attached file(s) follow: read them as the assignment.` : '',
+      `\nThe learner's library (subject | branch | course code | course | chapters):\n${req.inventory?.slice(0, 20000) || '(empty)'}`,
+    ].join('\n')
+  if (req.kind === 'fit') return req.material ?? ''
+  if (req.kind === 'availability') return `Today: ${req.today ?? ''}\n\nThe learner says:\n${req.material ?? ''}`
   const [subject, branch, course] = req.trail
   const lines = [`Subject: ${subject}`]
   if (branch) lines.push(`Branch: ${branch}`)
@@ -276,22 +363,38 @@ function userPrompt(req: GenRequest): string {
 /** Streaming chat-completions payload sent to OpenRouter from either side. */
 export function completionBody(req: GenRequest, model: string) {
   const spec = SPECS[req.kind]
+  const text = userPrompt(req)
+  const files = req.attachments ?? []
+  // photos and PDFs go along as content parts (only the path model reads them)
+  const content = files.length
+    ? [
+        { type: 'text', text },
+        ...files.map((f) =>
+          f.type.startsWith('image/')
+            ? { type: 'image_url', image_url: { url: f.data } }
+            : { type: 'file', file: { filename: f.name, file_data: f.data } },
+        ),
+      ]
+    : text
+  const thinking = model.startsWith('google/gemini')
   return {
     model,
     stream: true,
     temperature: spec.temperature,
-    max_tokens: spec.maxTokens,
+    // thinking models spend output tokens reasoning first; keep that small and leave headroom
+    max_tokens: thinking ? spec.maxTokens + 1500 : spec.maxTokens,
+    ...(thinking ? { reasoning: { effort: 'minimal' } } : {}),
     // route to whichever provider is fastest for this model right now
     provider: { sort: 'throughput' },
     messages: [
       { role: 'system', content: spec.system },
-      { role: 'user', content: userPrompt(req) },
+      { role: 'user', content },
     ],
   }
 }
 
 export function modelFor(kind: GenKind, chosen: string, factcheckModel = FACTCHECK_MODEL): string {
-  return kind === 'factcheck' ? factcheckModel : chosen
+  return kind === 'factcheck' ? factcheckModel : kind === 'path' ? PATH_MODEL : chosen
 }
 
 export function isGenRequest(x: unknown): x is GenRequest {
@@ -306,6 +409,22 @@ export function isGenRequest(x: unknown): x is GenRequest {
     okStr(r.context, 20000) &&
     okStr(r.question, 2000) &&
     okStr(r.issues, 8000) &&
+    okStr(r.goal, 2000) &&
+    okStr(r.material, 24000) &&
+    okStr(r.inventory, 24000) &&
+    okStr(r.today, 40) &&
+    (r.attachments === undefined ||
+      (Array.isArray(r.attachments) &&
+        r.attachments.length <= 4 &&
+        r.attachments.every(
+          (a) =>
+            typeof a?.name === 'string' &&
+            a.name.length <= 200 &&
+            /^(image\/(png|jpeg|webp|gif)|application\/pdf)$/.test(a.type) &&
+            typeof a.data === 'string' &&
+            a.data.startsWith(`data:${a.type};base64,`) &&
+            a.data.length <= MAX_ATTACHMENT,
+        ))) &&
     (r.length === undefined || ['short', 'medium', 'long'].includes(r.length)) &&
     (r.focus === undefined || (Array.isArray(r.focus) && r.focus.length <= 12 && r.focus.every((f) => typeof f === 'string' && f.length <= 300)))
   )

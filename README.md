@@ -23,9 +23,42 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
   you land exactly where you left Music, scrolled to the same spot in the chapter and panels.
   Tapping the subject you're already in keeps your place. Subjects from before trails were kept
   open at the last thing you opened in them. Trail synced; scroll position per device.
+- **Explore | Library | Paths | Cal** switch in the top bar; the top bar and the panel switch
+  stay put. Each mode keeps its list in the left panel, like Explore's subjects:
+  - **Library** — your saved subjects (same A–Z / Newest / Custom sort), each opening into
+    branch → course → chapter columns, then that chapter's highlights, lectures and star.
+    **+ Path** on a chapter or a whole course adds it to a path.
+  - **Paths** — every path, filtered **All / Scheduled / Not scheduled / Archived** and sorted
+    (newest, recently changed, A–Z, due soonest, least time left, most progress), with
+    **✦ New with AI** / **+ Empty** at the bottom (laid out like Cal). The open path shows on the right. New paths start
+    *Not scheduled*; **📅 Schedule this path**, **Unschedule**, **🗄 Archive** / **Restore**.
+    AI drafting: goal + pasted assignment + photos/PDFs → subject › branch › course › chapter
+    steps (`google/gemini-3.8-flash`); **Create** reuses matches and generates anything missing.
+  - **Cal** — the scheduled paths in **priority order** (top first) with their status (on track,
+    late, doesn't fit, covered by a path above) and **When I'm free** at the bottom. **🔒 Reorder**
+    unlocks dragging; the plan re-flows at once. Tap a path for its **rundown** (time planned,
+    first → last session vs. its due date, every session by day); tap a session to open that
+    hour and adjust it; **× full plan** goes back. If the order makes something late, a warning
+    offers **Put due dates first**, **Keep my order** (accept it), or **Make it fit**.
+- **Timing** per scheduled path: **ASAP**, **By a date** or **No rush**. The Cal order decides
+  priority; timing only decides where a newly scheduled path joins it (ASAP on top, dated by due
+  date, No rush at the bottom) and which dates it must make.
+- **Cal plan** — every scheduled path together at three linked zoom levels, top to bottom **Week**, **Month**, **Year**. **Year** (one bar per
+  path from first to last session, ◆ due dates, the part past a due date in red; tap to expand
+  the weekly load: hours per week stacked by path against free time), **Month** (each day's time
+  per path, due dates, red outline on days with work past a due date) and **Week** (sessions at
+  their time of day over shaded free time; tap one to adjust: −5/+5 min, earlier/later, done,
+  open). A month in the year moves the month view; a day moves the week. Tapping a path on the
+  left opens its rundown and dims the others. Free time: plain words (AI → weekly blocks + busy
+  days) or by hand. When it doesn't fit: **Shorten evenly** (15-min floor) or **✦ Make it fit
+  with AI**.
+- **Narrow windows** (split view): the page never scrolls sideways; Library gets a Subject
+  dropdown, Paths mode a Paths | Schedule switch; older columns fold into strips.
+- **Text size** A / A+ / A++ lives in Settings (this device).
 - **Panel width switch** (top bar, three little layout pictures): Slim strips, Compact titles or
   Wide with summaries for the earlier panels. Tap the lit one again for Auto (fold to fit). Per device.
-- **Sort the subject rail:** A–Z, Newest, or Custom (tap Custom again for ✎ ↑↓ arrange). Synced.
+- **Sort the subject rail:** A–Z, Newest, or Custom: tap the 🔒 to unlock, drag subjects by their ≡
+  handle, tap 🔓 to lock again. Synced.
 - **Add to home screen** (Settings): shows the iOS Share → Add to Home Screen steps; it then opens
   full screen with its own icon.
 - **Highlighter buckets.** Select text in a chapter (or a deeper dive) and tap a bucket — each has
@@ -35,10 +68,10 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Study tools toolbar stays frozen** at the top of the chapter while you scroll.
 - **Spend meter** (top right): OpenRouter spend on the site's key — all time · week · today, to
   three decimals. Turn it off in Settings.
-- **Library tab** (pinned in the top bar). Filter by bucket with the colour chips, or **Sort → Group
-  by bucket** to see every highlight under its bucket with a link back to its chapter. ☆ any course or chapter, or highlight chapter text →
+- **Library tab** (pinned in the top bar). Search, plus one **Filter** button that pops open type, highlight colour and sort
+  (badge = how many are changed; Reset / Done). **Sort → By colour** to see every highlight under its bucket with a link back to its chapter. ☆ any course or chapter, or highlight chapter text →
   **★ Save highlight**. Everything is filed automatically by subject → branch → course → chapter
-  in catalog order, with search, type filters, sort (course order / recently saved / A–Z), fold any
+  in catalog order (or recently saved / A–Z), fold any
   subject or course, Open all / Close all — and it reopens exactly how you left it.
 
 ## Study tools

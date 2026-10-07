@@ -235,3 +235,121 @@ export function parseChart(text: string): ChartSpec | null {
     : spec.series.length > 0
   return ok ? spec : null
 }
+
+/* ---------------- paths and availability ---------------- */
+
+export interface PlanStep {
+  subject: string
+  branch: string
+  code: string
+  course: string
+  chapter: string
+  minutes: number
+  note: string
+}
+export interface PathPlan {
+  title: string
+  focus: string
+  steps: PlanStep[]
+}
+
+/** TITLE / FOCUS / STEP lines (see the "path" prompt). Partial text is fine. */
+export function parsePathPlan(text: string, complete = true): PathPlan {
+  const lines = text.split('\n')
+  if (!complete) lines.pop()
+  const out: PathPlan = { title: '', focus: '', steps: [] }
+  for (const raw of lines) {
+    const l = clean(raw)
+    const m = l.match(/^(TITLE|FOCUS|STEP)\s*:\s*(.*)$/i)
+    if (!m) continue
+    const tag = m[1].toUpperCase()
+    if (tag === 'TITLE') out.title = m[2].slice(0, 200)
+    else if (tag === 'FOCUS') out.focus = m[2].slice(0, 2000)
+    else {
+      const p = m[2].split('|').map((x) => x.trim())
+      if (p.length < 5 || !p[0] || !p[1] || !p[3] || !p[4]) continue
+      const minutes = Math.round(Number(p[5]))
+      out.steps.push({
+        subject: p[0].slice(0, 200),
+        branch: p[1].slice(0, 200),
+        code: p[2].slice(0, 30),
+        course: p[3].slice(0, 200),
+        chapter: p[4].slice(0, 200),
+        minutes: minutes >= 5 && minutes <= 600 ? minutes : 30,
+        note: p.slice(6).join(' | ').slice(0, 600),
+      })
+    }
+  }
+  return out
+}
+
+const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
+const hhmm = (t: string) => {
+  const m = t.trim().match(/^(\d{1,2}):(\d{2})$/)
+  if (!m || +m[1] > 24 || +m[2] > 59) return ''
+  return `${m[1].padStart(2, '0')}:${m[2]}`
+}
+
+/** WEEKLY / DATE / BUSY lines → availability (keeps only well-formed, non-empty blocks). */
+export function parseAvailability(text: string): { weekly: { day: number; start: string; end: string }[]; overrides: { date: string; blocks: { start: string; end: string }[] }[] } {
+  const weekly: { day: number; start: string; end: string }[] = []
+  const byDate = new Map<string, { start: string; end: string }[]>()
+  for (const raw of text.split('\n')) {
+    const l = clean(raw)
+    const m = l.match(/^(WEEKLY|DATE|BUSY)\s*:\s*(.*)$/i)
+    if (!m) continue
+    const p = m[2].split('|').map((x) => x.trim())
+    const tag = m[1].toUpperCase()
+    if (tag === 'BUSY') {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(p[0])) byDate.set(p[0], byDate.get(p[0]) ?? [])
+      continue
+    }
+    const start = hhmm(p[1] ?? '')
+    const end = hhmm(p[2] ?? '')
+    if (!start || !end || end <= start) continue
+    if (tag === 'WEEKLY') {
+      const day = DAYS.indexOf(p[0].slice(0, 3).toLowerCase())
+      if (day >= 0) weekly.push({ day, start, end })
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(p[0])) byDate.set(p[0], [...(byDate.get(p[0]) ?? []), { start, end }])
+  }
+  return { weekly, overrides: [...byDate].map(([date, blocks]) => ({ date, blocks })) }
+}
+
+/* ---------------- "make it fit" proposals ---------------- */
+
+export type FitChange =
+  | { kind: 'min'; path: number; step: number; minutes: number; why: string }
+  | { kind: 'drop'; path: number; step: number; why: string }
+  | { kind: 'timing'; path: number; timing: 'asap' | 'date' | 'none'; due: string; why: string }
+
+/** SUMMARY / MIN / DROP / TIMING lines (see the "fit" prompt); numbers are 1-based. */
+export function parseFit(text: string): { summary: string; changes: FitChange[] } {
+  const out: { summary: string; changes: FitChange[] } = { summary: '', changes: [] }
+  const ref = (r: string) => {
+    const m = r.trim().match(/^(\d+)\.(\d+)$/)
+    return m ? [Number(m[1]), Number(m[2])] : null
+  }
+  for (const raw of text.split('\n')) {
+    const l = clean(raw)
+    const m = l.match(/^(SUMMARY|MIN|DROP|TIMING)\s*:\s*(.*)$/i)
+    if (!m) continue
+    const p = m[2].split('|').map((x) => x.trim())
+    const tag = m[1].toUpperCase()
+    if (tag === 'SUMMARY') out.summary = m[2].slice(0, 400)
+    else if (tag === 'MIN') {
+      const r = ref(p[0])
+      const minutes = Math.round(Number(p[1]))
+      if (r && minutes >= 15 && minutes <= 600) out.changes.push({ kind: 'min', path: r[0], step: r[1], minutes, why: (p[2] ?? '').slice(0, 300) })
+    } else if (tag === 'DROP') {
+      const r = ref(p[0])
+      if (r) out.changes.push({ kind: 'drop', path: r[0], step: r[1], why: (p[1] ?? '').slice(0, 300) })
+    } else {
+      const path = Number(p[0])
+      const timing = (p[1] ?? '').toLowerCase()
+      const due = /^\d{4}-\d{2}-\d{2}$/.test(p[2] ?? '') ? p[2] : ''
+      if (path >= 1 && (timing === 'asap' || timing === 'date' || timing === 'none') && (timing !== 'date' || due))
+        out.changes.push({ kind: 'timing', path, timing, due, why: (p[3] ?? '').slice(0, 300) })
+    }
+  }
+  return out
+}

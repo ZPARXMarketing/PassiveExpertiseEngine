@@ -1,6 +1,6 @@
-# Expertise Engine
+# Passive Expertise Engine (PEE)
 
-Type a subject. Drill down like a university catalog. Read each chapter as it's written for you.
+Yes, the acronym is PEE. Type a subject, drill down like a university catalog, and read each chapter as it's written for you.
 
 ![Explore: subject, course, syllabus and chapter side by side](docs/screenshots/02-explore.png)
 

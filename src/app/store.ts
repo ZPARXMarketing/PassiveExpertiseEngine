@@ -4,7 +4,8 @@
  * migration in supabase/migrations is applied.
  */
 
-import type { Extra, ExtraKind, Level, NodeMeta, SavedItem, TreeNode } from './types.ts'
+import type { Bucket, Extra, ExtraKind, Level, NodeMeta, Path, SavedItem, TreeNode } from './types.ts'
+import { DEFAULT_BUCKETS } from './highlight.ts'
 
 // Your own Supabase project, set at build time (see .env.example). Unset = this-device mode.
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined)?.replace(/\/$/, '') ?? ''
@@ -32,11 +33,14 @@ export interface Store {
   completions(): Promise<Set<string>>
   setComplete(nodeId: string, done: boolean): Promise<void>
   nodesById(ids: string[]): Promise<TreeNode[]>
+  /** the whole tree, light (no summaries) — for the path planner's inventory */
+  allNodes(): Promise<TreeNode[]>
   /** node id → last opened (ISO) */
   visits(): Promise<Map<string, string>>
   visit(nodeId: string): Promise<void>
   saved(): Promise<SavedItem[]>
-  addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text'>): Promise<SavedItem>
+  addSaved(item: Pick<SavedItem, 'node_id' | 'kind' | 'text' | 'color'>): Promise<SavedItem>
+  recolorSaved(id: string, color: string): Promise<void>
   removeSaved(id: string): Promise<void>
   extras(nodeId: string): Promise<Extra[]>
   addExtra(nodeId: string, kind: ExtraKind, key: string, body: unknown, model: string): Promise<Extra>
@@ -46,9 +50,19 @@ export interface Store {
   /** store an MP3, return a URL any device can play */
   uploadAudio(path: string, audio: Blob): Promise<string>
   deleteAudio(url: string): Promise<void>
+  /** highlighter buckets, in order */
+  buckets(): Promise<Bucket[]>
+  /** create or update one bucket */
+  saveBucket(b: Bucket): Promise<void>
   pref<T>(key: string): Promise<T | null>
   setPref(key: string, value: unknown): Promise<void>
+  paths(): Promise<Path[]>
+  /** create (no id yet) or update one path; returns the stored row */
+  savePath(p: NewPath): Promise<Path>
+  deletePath(id: string): Promise<void>
 }
+
+export type NewPath = Omit<Path, 'id' | 'created_at' | 'updated_at'> & { id?: string }
 
 /* ---------------- Supabase ---------------- */
 
@@ -108,6 +122,7 @@ const cloud: Store = {
     }
   },
   nodesById: (ids) => (ids.length ? rest<TreeNode[]>(`xe_nodes?id=in.(${ids.join(',')})`) : Promise.resolve([])),
+  allNodes: () => rest<TreeNode[]>('xe_nodes?select=id,parent_id,level,title,meta,position,created_at&order=position.asc&limit=20000'),
   visits: async () => {
     const rows = await rest<{ node_id: string; visited_at: string }[]>('xe_visits?select=node_id,visited_at')
     return new Map(rows.map((r) => [r.node_id, r.visited_at]))
@@ -127,6 +142,9 @@ const cloud: Store = {
       body: JSON.stringify(item),
     })
     return row
+  },
+  recolorSaved: async (id, color) => {
+    await rest(`xe_saved?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ color }) })
   },
   removeSaved: async (id) => {
     await rest(`xe_saved?id=eq.${id}`, { method: 'DELETE' })
@@ -161,6 +179,17 @@ const cloud: Store = {
       headers: { apikey: SUPABASE_KEY, authorization: `Bearer ${SUPABASE_KEY}` },
     })
   },
+  buckets: async () => {
+    const rows = await rest<Bucket[]>('xe_buckets?order=position.asc&select=key,name,color,position,archived').catch(() => null)
+    return rows?.length ? rows : DEFAULT_BUCKETS
+  },
+  saveBucket: async (b) => {
+    await rest('xe_buckets', {
+      method: 'POST',
+      headers: { prefer: 'resolution=merge-duplicates' },
+      body: JSON.stringify(b),
+    })
+  },
   pref: async <T,>(key: string) => {
     const rows = await rest<{ value: T }[]>(`xe_prefs?key=eq.${encodeURIComponent(key)}&select=value`)
     return rows[0]?.value ?? null
@@ -171,6 +200,17 @@ const cloud: Store = {
       headers: { prefer: 'resolution=merge-duplicates' },
       body: JSON.stringify({ key, value, updated_at: new Date().toISOString() }),
     })
+  },
+  paths: () => rest<Path[]>('xe_paths?order=created_at.desc'),
+  savePath: async (p) => {
+    const body = JSON.stringify({ ...p, updated_at: new Date().toISOString() })
+    const [row] = p.id
+      ? await rest<Path[]>(`xe_paths?id=eq.${p.id}`, { method: 'PATCH', headers: { prefer: 'return=representation' }, body })
+      : await rest<Path[]>('xe_paths', { method: 'POST', headers: { prefer: 'return=representation' }, body })
+    return row
+  },
+  deletePath: async (id) => {
+    await rest(`xe_paths?id=eq.${id}`, { method: 'DELETE' })
   },
 }
 
@@ -186,6 +226,7 @@ interface LocalData {
   saved?: SavedItem[]
   extras?: Extra[]
   prefs?: Record<string, unknown>
+  paths?: Path[]
 }
 
 function load(): LocalData {
@@ -250,6 +291,7 @@ function makeDevice(): Store {
       save(d)
     },
     nodesById: async (ids) => d.nodes.filter((n) => ids.includes(n.id)),
+    allNodes: async () => [...d.nodes],
     visits: async () => new Map(Object.entries(visits)),
     visit: async (id) => {
       visits[id] = new Date().toISOString()
@@ -261,6 +303,11 @@ function makeDevice(): Store {
       saved().push(row)
       save(d)
       return row
+    },
+    recolorSaved: async (id, color) => {
+      const x = saved().find((y) => y.id === id)
+      if (x) x.color = color
+      save(d)
     },
     removeSaved: async (id) => {
       d.saved = saved().filter((x) => x.id !== id)
@@ -281,9 +328,29 @@ function makeDevice(): Store {
     // this-device mode can't keep audio files; the lecture plays for this visit only
     uploadAudio: async (_path, audio) => URL.createObjectURL(audio),
     deleteAudio: async (url) => URL.revokeObjectURL(url),
+    buckets: async () => ((d.prefs ?? {}).buckets as Bucket[] | undefined) ?? DEFAULT_BUCKETS,
+    saveBucket: async (b) => {
+      const list = (((d.prefs ??= {}).buckets as Bucket[] | undefined) ?? DEFAULT_BUCKETS).filter((x) => x.key !== b.key)
+      d.prefs.buckets = [...list, b].sort((x, y) => x.position - y.position)
+      save(d)
+    },
     pref: async <T,>(key: string) => ((d.prefs ?? {})[key] as T) ?? null,
     setPref: async (key, value) => {
       ;(d.prefs ??= {})[key] = value
+      save(d)
+    },
+    paths: async () => [...(d.paths ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    savePath: async (p) => {
+      const now = new Date().toISOString()
+      const list = (d.paths ??= [])
+      const old = p.id ? list.find((x) => x.id === p.id) : undefined
+      const row: Path = { ...p, id: p.id ?? crypto.randomUUID(), created_at: old?.created_at ?? now, updated_at: now }
+      d.paths = [...list.filter((x) => x.id !== row.id), row]
+      save(d)
+      return row
+    },
+    deletePath: async (id) => {
+      d.paths = (d.paths ?? []).filter((x) => x.id !== id)
       save(d)
     },
   }

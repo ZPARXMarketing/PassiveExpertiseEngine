@@ -105,6 +105,15 @@ const extras = [
   ex('x1', 'visual', 'Indifference curves', chart),
   ex('x2', 'check', '', { verdict: 'ok', issues: [], sources: ['https://www.britannica.com/topic/utility-economics', 'https://www.investopedia.com/terms/i/indifferencecurve.asp'], checkedAt: iso() }),
 ]
+const day = (off) => new Date(Date.now() + off * 864e5).toISOString().slice(0, 10)
+const step = (i, minutes, note) => ({ node_id: `ch-${i}`, note, minutes })
+const paths = [
+  { id: 'p1', title: 'Pass the ECON 301 midterm', goal: 'Midterm on consumer theory', focus: 'Utility, budget lines and demand derivation carry most of the exam.', due: day(12), color: '#2affa3', archived: false,
+    steps: [step(0, 40, 'Know MRS cold'), step(1, 30, 'Draw budget lines fast'), step(2, 50, 'Practise the Lagrangian'), step(3, 45, 'Slutsky decomposition')], created_at: iso(), updated_at: iso() },
+  { id: 'p2', title: 'Cost curves refresher', goal: 'Interview prep: production and costs', focus: 'Short-run versus long-run cost curves.', due: null, color: '#4cc9ff', archived: false,
+    steps: [step(4, 35, 'Marginal vs average cost'), step(5, 40, 'Zero long-run profit')], created_at: iso(), updated_at: iso() },
+]
+const weekly = [1, 2, 3, 4, 5].map((d) => ({ day: d, start: '09:00', end: '11:00' })).concat([{ day: 6, start: '09:00', end: '12:00' }])
 const visits = { 's-econ': iso(), 'b-micro': iso(), 'c-301': iso(), 'ch-0': iso() }
 const lessons = { 'c-301': syllabus, 'ch-0': lesson }
 const store = {
@@ -113,7 +122,8 @@ const store = {
     { id: 'sv1', node_id: 'c-301', kind: 'node', text: 'Intermediate Microeconomics', created_at: iso() },
     { id: 'sv2', node_id: 'ch-0', kind: 'snippet', text: 'Because only the ranking carries meaning, any increasing transformation of u describes the same preferences.', created_at: iso() },
   ],
-  prefs: { studyTools: true },
+  prefs: { studyTools: true, availability: { weekly, overrides: [], text: 'Weekday mornings 9-11am, Saturday mornings' } },
+  paths,
 }
 
 const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || '/opt/pw-browsers/chromium-1194/chrome-linux/chrome' }).catch(() => chromium.launch())
@@ -126,23 +136,25 @@ async function page(w, h, init) {
 }
 const shot = (p, name) => p.screenshot({ path: `${OUT}${name}.png` })
 
-// 1. empty state
-{
-  const p = await page(1440, 860, { nodes: [], lessons: {}, done: [] })
-  await p.goto(BASE); await p.waitForTimeout(1200); await shot(p, '01-home'); await p.context().close()
-}
-// 2. drill-down + chapter reader (resumes at the last click)
+// 2. Explore: the drill-down with a chapter open (resumes at the last click)
 {
   const p = await page(1440, 900)
-  await p.goto(BASE); await p.waitForTimeout(2000); await shot(p, '02-reader')
+  await p.goto(BASE); await p.waitForTimeout(2000); await shot(p, '02-explore')
   await p.evaluate(() => document.querySelector('.chart')?.scrollIntoView({ block: 'center' }))
-  await p.waitForTimeout(500); await shot(p, '03-reader-scrolled')
+  await p.waitForTimeout(500); await shot(p, '03-chart')
+  for (const [mode, name] of [['Library', '04-library'], ['Paths', '05-paths'], ['Cal', '06-cal']]) {
+    await p.getByRole('button', { name: new RegExp(`^${mode}`) }).first().click()
+    await p.waitForTimeout(1200)
+    if (mode === 'Library') await p.getByText('Economics', { exact: true }).first().click()
+    if (mode === 'Paths') await p.getByText('Pass the ECON 301 midterm').first().click()
+    await p.waitForTimeout(1200); await shot(p, name)
+  }
   await p.context().close()
 }
 // 3. phone
 {
   const p = await page(390, 844)
-  await p.goto(BASE); await p.waitForTimeout(2000); await shot(p, '04-mobile'); await p.context().close()
+  await p.goto(BASE); await p.waitForTimeout(2000); await shot(p, '07-mobile'); await p.context().close()
 }
 await browser.close()
 console.log('wrote', OUT)

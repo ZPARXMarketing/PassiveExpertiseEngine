@@ -1,31 +1,33 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { generate, loadSettings, record, resolveVoice, saveSettings, type Settings } from './generate.ts'
-import { DEFAULT_VOICE, type GenKind, type GenRequest } from './prompts.ts'
+import { DEFAULT_VOICE, type GenRequest } from './prompts.ts'
 import {
   applyFix,
   parseChart,
   latest,
   lessonText,
-  parseBranches,
   parseCheck,
-  parseCourses,
   parseLesson,
   parsePractice,
   parseSections,
-  parseSyllabus,
   type RawItem,
 } from './parse.ts'
-import { openStore, type NewNode, type Store } from './store.ts'
+import { openStore, type NewPath, type Store } from './store.ts'
+import { PathList, Paths, PATH_COLORS, hours, type Filter, type PathSort } from './Paths.tsx'
+import { AvailabilityEditor, CalList, Schedule } from './Schedule.tsx'
+import { EMPTY_AVAILABILITY, planSchedule, priorityOrder, weeklyMinutes, type PathMeta, type Timing } from './schedule.ts'
+import { childrenOrGenerate } from './tree.ts'
 import {
-  CHILD_LEVEL,
   chainIds,
   liveKey,
+  type Availability,
+  type Bucket,
+  type Path,
   type CheckResult,
   type Extra,
   type Lesson,
   type LectureBody,
   type LectureLength,
-  type Level,
   type Teacher,
   type SavedItem,
   type Syllabus,
@@ -37,8 +39,11 @@ import { AudioProvider } from './MiniPlayer.tsx'
 import { Reader } from './Reader.tsx'
 import type { ToolCtx } from './Study.tsx'
 import { SettingsSheet } from './SettingsSheet.tsx'
+import { Usage } from './Usage.tsx'
+import { applyTextSize } from './TextSize.tsx'
+import { PanelWidthSwitch, type PanelWidth } from './PanelWidth.tsx'
+import { DEFAULT_BUCKETS } from './highlight.ts'
 
-const GEN_KIND: Partial<Record<Level, GenKind>> = { subject: 'branches', branch: 'courses', course: 'syllabus' }
 const SUGGESTIONS = ['Economics', 'Banking', 'Organic Chemistry', 'Music Theory', 'Psychology', 'Philosophy']
 
 const EMPTY_TOOLS: ToolCtx = {
@@ -87,6 +92,23 @@ export default function App() {
   const width = useWidth()
   /** manual fold per panel (keyed by its parent id); cleared on each new selection */
   const [folds, setFolds] = useState<Record<string, Fold>>({})
+  /** chosen width for the earlier panels (this device); auto = fold to fit */
+  const [panelWidth, setPanelWidth] = useState<PanelWidth>(() => {
+    try {
+      return (localStorage.getItem('panel-width') as PanelWidth) || 'auto'
+    } catch {
+      return 'auto'
+    }
+  })
+  const choosePanelWidth = (v: PanelWidth) => {
+    setPanelWidth(v)
+    setFolds({})
+    try {
+      localStorage.setItem('panel-width', v)
+    } catch {
+      /* private mode: applies this visit */
+    }
+  }
   const [topic, setTopic] = useState('')
 
   const [subjects, setSubjects] = useState<TreeNode[]>([])
@@ -97,10 +119,32 @@ export default function App() {
   const [busy, setBusy] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [done, setDone] = useState<Set<string>>(new Set())
-  const [tab, setTab] = useState<'explore' | 'library'>('explore')
+  const [tab, setTab] = useState<'explore' | 'library' | 'paths' | 'cal'>('explore')
+  /** Cal: priority order of scheduled paths (top first) and "keep my order anyway" (synced) */
+  const [pathOrder, setPathOrder] = useState<string[]>([])
+  const [calAck, setCalAck] = useState('')
+  /** Cal: the path whose rundown is open ('' = the full plan) */
+  const [calPath, setCalPath] = useState('')
+  /** Library mode: the subject picked in the left panel */
+  const [libSubject, setLibSubject] = useState('')
+  /** Paths: which list is open, and each path's timing / pressing (synced pref) */
+  const [pathFilter, setPathFilter] = useState<Filter>('all')
+  const [pathSort, setPathSort] = useState<PathSort>('new')
+  const [pathMeta, setPathMeta] = useState<PathMeta>({})
+  const [editingFree, setEditingFree] = useState(false)
+  const [paths, setPaths] = useState<Path[]>([])
+  /** the path open in the Paths view ('' none, 'new' the drafter) */
+  const [pathSel, setPathSel] = useState('')
+  const [availability, setAvailability] = useState<Availability>(EMPTY_AVAILABILITY)
   /** node id → last opened; drives the "explored" colour and resume-where-you-left-off */
   const [visited, setVisited] = useState<Map<string, string>>(new Map())
   const [saved, setSaved] = useState<SavedItem[]>([])
+  const [buckets, setBuckets] = useState<Bucket[]>(DEFAULT_BUCKETS)
+  const [showUsage, setShowUsage] = useState(true)
+  /** subject list order (synced): A–Z, newest first, or your own */
+  const [railSort, setRailSort] = useState<'az' | 'new' | 'custom'>('new')
+  const [railOrder, setRailOrder] = useState<string[]>([])
+  const [arranging, setArranging] = useState(false)
   /** nodes fetched only for the Library or a resume (not part of any open panel) */
   const [extra, setExtra] = useState<Record<string, TreeNode>>({})
   /** tiles streaming in before they are saved */
@@ -132,7 +176,11 @@ export default function App() {
     return () => clearTimeout(t)
   }, [jobs])
   const inflight = useRef(new Set<string>())
+  /** bumped by every navigation, so a slow subject lookup can't override a newer tap */
+  const navSeq = useRef(0)
   const columnsRef = useRef<HTMLDivElement>(null)
+
+  useEffect(applyTextSize, [])
 
   useEffect(() => {
     openStore().then(async (s) => {
@@ -143,6 +191,12 @@ export default function App() {
         s.saved().catch(() => []),
       ])
       setStudyTools(!!(await s.pref<boolean>('studyTools').catch(() => false)))
+      setBuckets(await s.buckets().catch(() => DEFAULT_BUCKETS))
+      const rs = await s.pref<'az' | 'new' | 'custom'>('railSort').catch(() => null)
+      if (rs) setRailSort(rs)
+      setRailOrder((await s.pref<string[]>('railOrder').catch(() => null)) ?? [])
+      const su = await s.pref<boolean>('showUsage').catch(() => null)
+      if (su !== null) setShowUsage(su)
       const t = await s.pref<Teacher>('teacher').catch(() => null)
       if (t) setTeacher((cur) => ({ ...cur, ...t }))
       setStore(s)
@@ -150,6 +204,12 @@ export default function App() {
       setDone(comp)
       setVisited(vis)
       setSaved(sav)
+      setPaths(await s.paths().catch(() => []))
+      const av = await s.pref<Availability>('availability').catch(() => null)
+      if (av) setAvailability({ ...EMPTY_AVAILABILITY, ...av })
+      setPathMeta((await s.pref<PathMeta>('pathMeta').catch(() => null)) ?? {})
+      setPathOrder((await s.pref<string[]>('pathOrder').catch(() => null)) ?? [])
+      setCalAck((await s.pref<string>('calAck').catch(() => null)) ?? '')
     })
   }, [])
 
@@ -205,31 +265,9 @@ export default function App() {
     (node: TreeNode, trail: string[]) =>
       run(node.id, async () => {
         if (!store) return
-        let list = await store.children(node.id)
-        let syllabus = node.level === 'course' ? await store.doc<Syllabus>(node.id) : null
-        if (!list.length) {
-          const kind = GEN_KIND[node.level]!
-          const parse = (t: string, complete: boolean): RawItem[] =>
-            kind === 'branches' ? parseBranches(t, complete) : kind === 'courses' ? parseCourses(t, complete) : parseSyllabus(t, complete).items
-          const { text, model } = await generate({ kind, trail }, settings, (t) =>
-            throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: parse(t, false) }))),
-          )
-          const rows: NewNode[] = parse(text, true).map((it, i) => ({
-            parent_id: node.id,
-            level: CHILD_LEVEL[node.level]!,
-            title: it.title.slice(0, 200),
-            summary: it.summary.slice(0, 2000),
-            meta: node.level === 'branch' ? { code: it.code ?? '', tier: it.tier ?? '' } : {},
-            position: i,
-          }))
-          if (!rows.length) throw new Error('The model returned nothing usable. Try again.')
-          list = await store.addNodes(rows)
-          if (node.level === 'course') {
-            const { description, objectives } = parseSyllabus(text, true)
-            syllabus = { description, objectives }
-            await store.saveDoc(node.id, syllabus, model)
-          }
-        }
+        const { list, syllabus } = await childrenOrGenerate(store, settings, node, trail, (items) =>
+          throttle(`kids:${node.id}`, () => setPreview((p) => ({ ...p, [node.id]: items }))),
+        )
         setKids((k) => ({ ...k, [node.id]: list }))
         setPreview((p) => ({ ...p, [node.id]: undefined }))
         if (syllabus) setDocs((d) => ({ ...d, [node.id]: syllabus }))
@@ -422,6 +460,7 @@ export default function App() {
   /** Select a node at its depth; everything to its right closes. */
   const select = useCallback(
     (node: TreeNode, depth: number, base: TreeNode[] = path) => {
+      navSeq.current++
       const next = [...base.slice(0, depth), node]
       setPath(next)
       setRailOpen(false)
@@ -468,6 +507,61 @@ export default function App() {
     [loadAncestors, openChain],
   )
 
+  /** where you last were inside each subject (subject id → node ids, top down); synced */
+  const [trails, setTrails] = useState<Record<string, string[]>>({})
+  const trailsLoaded = useRef(false)
+  useEffect(() => {
+    if (!store || trailsLoaded.current) return
+    trailsLoaded.current = true
+    void store
+      .pref<Record<string, string[]>>('trails')
+      .then((t) => t && setTrails((cur) => ({ ...t, ...cur })))
+      .catch(() => {})
+  }, [store])
+  useEffect(() => {
+    const sub = path[0]
+    if (!sub) return
+    const ids = path.map((n) => n.id)
+    setTrails((t) => (t[sub.id]?.join() === ids.join() ? t : { ...t, [sub.id]: ids }))
+  }, [path])
+  // save a moment after the last move rather than on every click
+  useEffect(() => {
+    if (!store || !trailsLoaded.current || !Object.keys(trails).length) return
+    const t = setTimeout(() => void store.setPref('trails', trails).catch(() => {}), 1500)
+    return () => clearTimeout(t)
+  }, [trails, store])
+
+  /**
+   * Open a subject exactly where you left it, so you can flip between subjects freely.
+   * Tapping the one you're already in keeps your place (its own panel still goes to the top).
+   * No saved trail (older subjects) → the last thing you opened inside it, from the visit log.
+   */
+  const openSubject = useCallback(
+    async (s: TreeNode) => {
+      setRailOpen(false)
+      setTab('explore')
+      if (path[0]?.id === s.id) return
+      const seq = ++navSeq.current
+      const last = trails[s.id]
+      let target = last && last.length > 1 ? last[last.length - 1] : ''
+      if (!target) {
+        const recent = [...visited.entries()]
+          .sort((a, b) => b[1].localeCompare(a[1]))
+          .map(([id]) => id)
+          .filter((id) => id !== s.id)
+        const have = await loadAncestors(recent).catch(() => known)
+        target = recent.find((id) => chainIds(id, have)[0] === s.id) ?? ''
+        if (seq !== navSeq.current) return
+        if (target) return openChain(chainIds(target, have).map((x) => have[x]).filter(Boolean))
+      }
+      if (!target) return select(s, 0, [])
+      const have = await loadAncestors([target])
+      // a newer tap wins over a slower lookup
+      if (seq === navSeq.current) openChain(chainIds(target, have).map((x) => have[x]).filter(Boolean))
+    },
+    [trails, path, visited, known, select, loadAncestors, openChain],
+  )
+
   // Resume wherever you (on any device) clicked last.
   const resumed = useRef(false)
   useEffect(() => {
@@ -495,10 +589,153 @@ export default function App() {
     }
   }
 
-  const saveSnippet = async (node: TreeNode, text: string) => {
+  const saveSnippet = async (node: TreeNode, text: string, color = 'yellow') => {
     if (!store) return
-    const row = await store.addSaved({ node_id: node.id, kind: 'snippet', text: text.slice(0, 4000) })
+    const row = await store.addSaved({ node_id: node.id, kind: 'snippet', text: text.slice(0, 4000), color })
     setSaved((s) => [...s, row])
+  }
+
+  const recolor = async (item: SavedItem, color: string) => {
+    if (!store) return
+    setSaved((s) => s.map((x) => (x.id === item.id ? { ...x, color } : x)))
+    await store.recolorSaved(item.id, color).catch(() => setSaved((s) => s.map((x) => (x.id === item.id ? item : x))))
+  }
+
+  const saveBucket = async (b: Bucket) => {
+    if (!store) return
+    setBuckets((list) => {
+      const rest = list.filter((x) => x.key !== b.key)
+      return [...rest, b].sort((x, y) => x.position - y.position)
+    })
+    await store.saveBucket(b).catch(() => {})
+  }
+
+  /** Subjects in the chosen order; in custom order, ones not placed yet lead (newest first). */
+  const sortedSubjects = useMemo(() => {
+    if (railSort === 'az') return [...subjects].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: 'base' }))
+    if (railSort === 'new') return subjects
+    const at = new Map(railOrder.map((id, i) => [id, i]))
+    return [...subjects.filter((x) => !at.has(x.id)), ...subjects.filter((x) => at.has(x.id)).sort((a, b) => at.get(a.id)! - at.get(b.id)!)]
+  }, [subjects, railSort, railOrder])
+
+  /** Library mode lists only subjects with something saved (with how much) */
+  const savedSubjects = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const x of [...saved, ...lectures]) {
+      const top = known[chainIds(x.node_id, known)[0]]
+      if (top?.level === 'subject') m.set(top.id, (m.get(top.id) ?? 0) + 1)
+    }
+    return m
+  }, [saved, lectures, known])
+
+  const railSubjects = tab === 'library' ? sortedSubjects.filter((x) => savedSubjects.has(x.id)) : sortedSubjects
+
+  const chooseRailSort = (next: 'az' | 'new' | 'custom') => {
+    // custom starts from whatever order is on screen now
+    if (next === 'custom' && !railOrder.length) {
+      const seed = sortedSubjects.map((x) => x.id)
+      setRailOrder(seed)
+      void store?.setPref('railOrder', seed).catch(() => {})
+    }
+    setRailSort(next)
+    setArranging(next === 'custom')
+    void store?.setPref('railSort', next).catch(() => {})
+  }
+
+  /** Custom order: drag a subject by its handle (touch or mouse); saved when you let go. */
+  const [dragId, setDragId] = useState('')
+  const railItems = useRef(new Map<string, HTMLLIElement>())
+  const startDrag = (id: string, e: React.PointerEvent<HTMLElement>) => {
+    e.preventDefault()
+    e.currentTarget.setPointerCapture(e.pointerId)
+    setDragId(id)
+  }
+  const dragMove = (e: React.PointerEvent<HTMLElement>) => {
+    if (!dragId) return
+    const ids = sortedSubjects.map((x) => x.id)
+    // new slot = how many of the others sit above the finger
+    let to = 0
+    for (const id of ids) {
+      if (id === dragId) continue
+      const r = railItems.current.get(id)?.getBoundingClientRect()
+      if (r && e.clientY > r.top + r.height / 2) to++
+    }
+    const from = ids.indexOf(dragId)
+    if (to === from) return
+    ids.splice(from, 1)
+    ids.splice(to, 0, dragId)
+    setRailOrder(ids)
+  }
+  const endDrag = () => {
+    if (!dragId) return
+    setDragId('')
+    void store?.setPref('railOrder', sortedSubjects.map((x) => x.id)).catch(() => {})
+  }
+
+  const toggleUsage = (on: boolean) => {
+    setShowUsage(on)
+    void store?.setPref('showUsage', on).catch(() => {})
+  }
+
+  const savePath = async (p: NewPath): Promise<Path> => {
+    if (!store) throw new Error('Still loading.')
+    const row = await store.savePath(p)
+    setPaths((list) => [row, ...list.filter((x) => x.id !== row.id)].sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    return row
+  }
+
+  const deletePath = async (id: string) => {
+    if (!store) return
+    await store.deletePath(id)
+    setPaths((list) => list.filter((x) => x.id !== id))
+    setPathSel('')
+  }
+
+  /** Add a chapter (or every chapter of a course) to the end of a path; 'new' starts one. */
+  const addToPath = async (nodeId: string, pathId: string): Promise<string> => {
+    if (!store) throw new Error('Still loading.')
+    const node = known[nodeId] ?? (await loadAncestors([nodeId]))[nodeId]
+    let ids = [nodeId]
+    if (node?.level === 'course') {
+      const chapters = kids[nodeId] ?? (await store.children(nodeId))
+      if (chapters.length) {
+        ids = chapters.map((c) => c.id)
+        setKids((k) => ({ ...k, [nodeId]: chapters }))
+      }
+    }
+    const target =
+      pathId === 'new'
+        ? // new paths start in the Archive: look first, schedule when ready
+          await savePath({ title: node?.title ?? 'New path', goal: '', focus: '', due: null, steps: [], color: PATH_COLORS[paths.length % PATH_COLORS.length], archived: true })
+        : paths.find((x) => x.id === pathId)
+    if (!target) throw new Error('That path is gone.')
+    const fresh = ids.filter((id) => !target.steps.some((st) => st.node_id === id))
+    await savePath({ ...target, steps: [...target.steps, ...fresh.map((id) => ({ node_id: id, note: '', minutes: 30 }))] })
+    return target.title
+  }
+
+  const saveMeta = (id: string, fields: { timing?: Timing; pressing?: boolean; shelved?: boolean }) =>
+    setPathMeta((m) => {
+      const next = { ...m, [id]: { ...m[id], ...fields } }
+      void store?.setPref('pathMeta', next).catch(() => {})
+      return next
+    })
+
+  /** the study plan, worked out once and shared by Paths and Schedule */
+  const plan = useMemo(() => planSchedule(paths, done, availability, pathMeta, pathOrder), [paths, done, availability, pathMeta, pathOrder])
+  const ordered = useMemo(() => priorityOrder(paths, pathMeta, pathOrder), [paths, pathMeta, pathOrder])
+  const saveOrder = (ids: string[]) => {
+    setPathOrder(ids)
+    void store?.setPref('pathOrder', ids).catch(() => {})
+  }
+  const saveAck = (sig: string) => {
+    setCalAck(sig)
+    void store?.setPref('calAck', sig).catch(() => {})
+  }
+
+  const saveAvailability = (a: Availability) => {
+    setAvailability(a)
+    void store?.setPref('availability', a).catch(() => {})
   }
 
   const removeSaved = async (item: SavedItem) => {
@@ -517,7 +754,7 @@ export default function App() {
     if (!title || !store) return
     setTopic('')
     const existing = subjects.find((s) => s.title.toLowerCase() === title.toLowerCase())
-    if (existing) return select(existing, 0, [])
+    if (existing) return void openSubject(existing)
     try {
       const [made] = await store.addNodes([{ parent_id: null, level: 'subject', title, summary: '', position: 0 }])
       setSubjects((s) => [made, ...s])
@@ -641,51 +878,176 @@ export default function App() {
               Learn
             </button>
           </form>
-          <nav className="tabs" aria-label="View">
+          <nav className="tabs" aria-label="Mode">
             <button className={tab === 'explore' ? 'on' : ''} onClick={() => setTab('explore')}>
               Explore
             </button>
             <button className={tab === 'library' ? 'on' : ''} onClick={() => setTab('library')}>
-              Library{saved.length > 0 && <span className="count">{saved.length}</span>}
+              Library
+            </button>
+            <button className={tab === 'paths' ? 'on' : ''} onClick={() => setTab('paths')}>
+              Paths
+            </button>
+            <button className={tab === 'cal' ? 'on' : ''} onClick={() => setTab('cal')}>
+              Cal
             </button>
           </nav>
+          <PanelWidthSwitch value={panelWidth} onChange={choosePanelWidth} />
           <button className="icon-btn" onClick={() => setShowSettings(true)} aria-label="Settings">
             ⚙
           </button>
+          {showUsage && <Usage />}
         </header>
 
-        <aside className="rail">
-          <div className="rail-head">
-            <span>Subjects</span>
-            {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
-          </div>
-          {subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
-          <ul>
-            {subjects.map((s) => (
-              <li key={s.id}>
-                <button
-                  className={`rail-item ${path[0]?.id === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
-                  onClick={() => select(s, 0, [])}
-                >
-                  {s.title}
-                </button>
-                <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
-                  ×
-                </button>
-              </li>
-            ))}
-          </ul>
-          <div className="legend">
-            <span>
-              <i className="dot seen" /> explored
-            </span>
-            <span>
-              <i className="dot done" /> completed
-            </span>
-            <span>
-              <i className="dot star" /> saved
-            </span>
-          </div>
+        <aside className={`rail ${tab === 'cal' ? 'rail-cal' : tab === 'paths' ? 'rail-paths' : ''}`}>
+          {tab === 'paths' && store ? (
+            <>
+              <div className="rail-head">
+                <span>Paths</span>
+                <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>
+              </div>
+              <PathList
+                store={store}
+                settings={settings}
+                paths={paths}
+                nodes={known}
+                done={done}
+                loadAncestors={loadAncestors}
+                onSave={savePath}
+                onDelete={(id) => void deletePath(id)}
+                onOpen={(id) => void openById(id)}
+                onToggleDone={(id) => void toggleDone(id)}
+                onBuilt={() => {}}
+                selected={pathSel}
+                onSelect={(id) => {
+                  setPathSel(id)
+                  setRailOpen(false)
+                }}
+                filter={pathFilter}
+                onFilter={setPathFilter}
+                sort={pathSort}
+                onSort={setPathSort}
+                meta={pathMeta}
+                onMeta={saveMeta}
+                outlook={plan.outlook}
+                panelWidth={panelWidth}
+              />
+            </>
+          ) : tab === 'cal' ? (
+            <>
+              <div className="rail-head">
+                <span>Scheduled</span>
+                {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+              </div>
+              <CalList
+                ordered={ordered}
+                outlook={plan.outlook}
+                onOrder={saveOrder}
+                onOpenPath={(id) => {
+                  setCalPath(calPath === id ? '' : id)
+                  setRailOpen(false)
+                }}
+                selected={calPath}
+              />
+              <button className="free-chip" onClick={() => setEditingFree(true)}>
+                🕒 When I'm free ·{' '}
+                {availability.weekly.length || availability.overrides.some((o) => o.blocks.length)
+                  ? `${hours(weeklyMinutes(availability))}/wk`
+                  : 'not set'}
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="rail-head">
+                <span>{tab === 'library' ? 'Saved subjects' : 'Subjects'}</span>
+                {store && <span className={`mode mode-${store.mode}`}>{store.mode === 'cloud' ? 'synced' : 'this device'}</span>}
+              </div>
+              {tab === 'library' && !railSubjects.length && (
+                <p className="rail-empty">Nothing saved yet. Star a course or chapter, or highlight text in a chapter.</p>
+              )}
+              {tab !== 'library' && subjects.length === 0 && <p className="rail-empty">Type a topic above to start.</p>}
+              {subjects.length > 1 && (
+                <div className="rail-sort" role="radiogroup" aria-label="Sort subjects">
+                  {(
+                    [
+                      ['az', 'A–Z'],
+                      ['new', 'Newest'],
+                      ['custom', 'Custom'],
+                    ] as const
+                  ).map(([k, label]) => (
+                    <button
+                      key={k}
+                      role="radio"
+                      aria-checked={railSort === k}
+                      className={railSort === k ? 'on' : ''}
+                      onClick={() => (k === 'custom' && railSort === 'custom' ? setArranging((a) => !a) : chooseRailSort(k))}
+                    >
+                      {label}
+                      {k === 'custom' && railSort === 'custom' && (
+                        <span className="rail-lock" aria-label={arranging ? 'Unlocked: drag to sort, tap to lock' : 'Locked: tap to sort'}>
+                          {arranging ? ' 🔓' : ' 🔒'}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+              <ul>
+                {railSubjects.map((s) => (
+                  <li
+                    key={s.id}
+                    className={dragId === s.id ? 'dragging' : ''}
+                    ref={(el) => {
+                      if (el) railItems.current.set(s.id, el)
+                      else railItems.current.delete(s.id)
+                    }}
+                  >
+                    <button
+                      className={`rail-item ${(tab === 'library' ? libSubject : path[0]?.id) === s.id ? 'active' : ''} ${visited.has(s.id) ? 'seen' : ''}`}
+                      onClick={() => {
+                        if (tab !== 'library') return void openSubject(s)
+                        setLibSubject(s.id)
+                        setRailOpen(false)
+                      }}
+                    >
+                      {s.title}
+                    </button>
+                    {arranging && railSort === 'custom' ? (
+                      <span
+                        className="rail-grip"
+                        onPointerDown={(e) => startDrag(s.id, e)}
+                        onPointerMove={dragMove}
+                        onPointerUp={endDrag}
+                        onPointerCancel={endDrag}
+                        aria-label={`Drag ${s.title} to reorder`}
+                      >
+                        ≡
+                      </span>
+                    ) : tab === 'library' ? (
+                      <span className="rail-count">{savedSubjects.get(s.id)}</span>
+                    ) : (
+                      <button className="rail-del" onClick={() => void removeSubject(s)} aria-label={`Delete ${s.title}`}>
+                        ×
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              {tab === 'explore' && (
+              <div className="legend">
+                <span>
+                  <i className="dot seen" /> explored
+                </span>
+                <span>
+                  <i className="dot done" /> completed
+                </span>
+                <span>
+                  <i className="dot star" /> saved
+                </span>
+              </div>
+              )}
+            </>
+          )}
         </aside>
         <div className="rail-scrim" onClick={() => setRailOpen(false)} />
 
@@ -699,6 +1061,77 @@ export default function App() {
             loadAncestors={loadAncestors}
             onOpen={(id) => void openById(id)}
             onRemove={(x) => void removeSaved(x)}
+            buckets={buckets}
+            paths={paths}
+            onAddToPath={addToPath}
+            panelWidth={panelWidth}
+            subjectId={libSubject}
+            savedSubjects={railSubjects.map((x) => ({ id: x.id, title: x.title, count: savedSubjects.get(x.id) ?? 0 }))}
+            onPickSubject={setLibSubject}
+          />
+        )}
+
+        {tab === 'paths' && store && (
+          <Paths
+            store={store}
+            settings={settings}
+            paths={paths}
+            nodes={known}
+            done={done}
+            loadAncestors={loadAncestors}
+            onSave={savePath}
+            onDelete={(id) => void deletePath(id)}
+            onOpen={(id) => void openById(id)}
+            onToggleDone={(id) => void toggleDone(id)}
+            onBuilt={(r) => {
+              setKids((k) => ({ ...k, ...r.lists }))
+              void store.subjects().then(setSubjects).catch(() => {})
+            }}
+            selected={pathSel}
+            onSelect={setPathSel}
+            filter={pathFilter}
+            onFilter={setPathFilter}
+            sort={pathSort}
+            onSort={setPathSort}
+            meta={pathMeta}
+            onMeta={saveMeta}
+            outlook={plan.outlook}
+            panelWidth={panelWidth}
+          />
+        )}
+
+        {tab === 'cal' && (
+          <Schedule
+            settings={settings}
+            paths={paths}
+            nodes={known}
+            done={done}
+            availability={availability}
+            onAvailability={saveAvailability}
+            onOpen={(id) => void openById(id)}
+            onToggleDone={(id) => void toggleDone(id)}
+            onGoPaths={() => setTab('paths')}
+            panelWidth={panelWidth}
+            plan={plan}
+            meta={pathMeta}
+            onMeta={saveMeta}
+            onSave={savePath}
+            onEditFree={() => setEditingFree(true)}
+            ordered={ordered}
+            onOrder={saveOrder}
+            ack={calAck}
+            onAck={saveAck}
+            focusPath={calPath}
+            onFocusPath={setCalPath}
+            narrowList={
+              <CalList
+                ordered={ordered}
+                outlook={plan.outlook}
+                onOrder={saveOrder}
+                onOpenPath={(id) => setCalPath(calPath === id ? '' : id)}
+                selected={calPath}
+              />
+            }
           />
         )}
 
@@ -735,7 +1168,11 @@ export default function App() {
                 {panels.map((parent, depth) => (
                     <Column
                       key={parent.id}
-                      fold={folds[parent.id] ?? autoFolds[depth]}
+                      fold={
+                        folds[parent.id] ??
+                        // the newest list (no chapter open yet) always stays fully open
+                        (panelWidth !== 'auto' && (chapter || depth < panels.length - 1) ? panelWidth : autoFolds[depth])
+                      }
                       onFold={(f) => setFolds((m) => ({ ...m, [parent.id]: f }))}
                       selectedTitle={path[depth + 1]?.title}
                       parent={parent}
@@ -771,7 +1208,11 @@ export default function App() {
                     onToggleDone={() => void toggleDone(chapter.id)}
                     isSaved={savedNode.has(chapter.id)}
                     onToggleSave={() => void toggleSave(chapter)}
-                    onSaveSnippet={(t) => void saveSnippet(chapter, t)}
+                    onSaveSnippet={(t, c) => void saveSnippet(chapter, t, c)}
+                    highlights={saved.filter((x) => x.kind === 'snippet' && x.node_id === chapter.id)}
+                    onRecolor={(x, c) => void recolor(x, c)}
+                    buckets={buckets}
+                    onRemoveHighlight={(x) => void removeSaved(x)}
                     studyTools={studyTools}
                     onToggleStudyTools={toggleStudyTools}
                     tools={tools ?? EMPTY_TOOLS}
@@ -808,12 +1249,28 @@ export default function App() {
           }
         />
 
+        {editingFree && (
+          <AvailabilityEditor
+            settings={settings}
+            value={availability}
+            onSave={(a) => {
+              saveAvailability(a)
+              setEditingFree(false)
+            }}
+            onClose={() => setEditingFree(false)}
+          />
+        )}
+
         {showSettings && (
           <SettingsSheet
             settings={settings}
             mode={store?.mode}
             teacher={teacher}
             onTeacher={saveTeacher}
+            buckets={buckets}
+            onSaveBucket={(b) => void saveBucket(b)}
+            showUsage={showUsage}
+            onShowUsage={toggleUsage}
             onSave={(s) => {
               setSettings(s)
               saveSettings(s)

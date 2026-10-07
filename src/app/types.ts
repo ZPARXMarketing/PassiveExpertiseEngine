@@ -47,11 +47,22 @@ export interface Lesson {
 }
 
 /** A Library entry: a whole node (course, chapter…) or a highlighted snippet of a chapter. */
+/** A highlighter bucket: a name and a colour. SavedItem.color holds its key. */
+export interface Bucket {
+  key: string
+  name: string
+  color: string
+  position: number
+  archived: boolean
+}
+
 export interface SavedItem {
   id: string
   node_id: string
   kind: 'node' | 'snippet'
   text: string
+  /** bucket key for snippets (the first four keys are the original colours) */
+  color?: string
   created_at: string
 }
 
@@ -156,3 +167,50 @@ export function lectureCounts(extras: Extra[]): Map<string, number> {
   return m
 }
 
+
+/* ---------------- Paths and Schedule ---------------- */
+
+/** One step of a path: a chapter (or a course, opened as a whole) and why it's there. */
+export interface PathStep {
+  node_id: string
+  /** what to focus on for the goal */
+  note: string
+  /** estimated study time */
+  minutes: number
+}
+
+/** A sequential, goal-specific course made of chapters from the tree. */
+export interface Path {
+  id: string
+  title: string
+  goal: string
+  /** the AI's short brief on what matters most for the goal */
+  focus: string
+  /** YYYY-MM-DD, or null */
+  due: string | null
+  steps: PathStep[]
+  color: string
+  archived: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** A weekly free block: day 0 = Sunday … 6 = Saturday, times "HH:MM" (24h). */
+export interface FreeBlock {
+  day: number
+  start: string
+  end: string
+}
+
+/** A one-off change on a date: busy all day, or replace that day's blocks. */
+export interface DayOverride {
+  date: string
+  blocks: { start: string; end: string }[]
+}
+
+export interface Availability {
+  weekly: FreeBlock[]
+  overrides: DayOverride[]
+  /** what the learner typed last time, so they can edit it */
+  text: string
+}

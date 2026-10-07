@@ -8,12 +8,14 @@
  *   OPENROUTER_API_KEY         required
  *   OPENROUTER_MODEL           optional, default "deepseek/deepseek-chat"
  *   OPENROUTER_FACTCHECK_MODEL optional, default "perplexity/sonar"
+ *   OPENROUTER_PATH_MODEL      optional, default "google/gemini-3.8-flash" (Paths: AI drafting)
  */
 
 import type { Config } from '@netlify/edge-functions'
 import {
   DEFAULT_MODEL,
   FACTCHECK_MODEL,
+  PATH_MODEL,
   OPENROUTER_BASE_URL,
   completionBody,
   isGenRequest,
@@ -37,6 +39,7 @@ export default async (req: Request) => {
     body.kind,
     Netlify.env.get('OPENROUTER_MODEL') || DEFAULT_MODEL,
     Netlify.env.get('OPENROUTER_FACTCHECK_MODEL') || FACTCHECK_MODEL,
+    Netlify.env.get('OPENROUTER_PATH_MODEL') || PATH_MODEL,
   )
 
   let upstream: Response

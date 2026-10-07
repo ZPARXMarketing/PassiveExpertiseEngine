@@ -34,11 +34,15 @@ const cookieOf = (req: Request) =>
     .find((c) => c.startsWith(`${COOKIE}=`))
     ?.slice(COOKIE.length + 1) ?? ''
 
+const PUBLIC = new Set(['/favicon.svg', '/apple-touch-icon.png', '/icon-192.png', '/icon-512.png', '/manifest.webmanifest'])
+
 export default async (req: Request, context: Context) => {
   const password = Netlify.env.get('APP_PASSWORD')
   if (!password) return context.next()
 
   const url = new URL(req.url)
+  // icons and manifest stay public: iOS fetches them without the cookie when adding to the home screen
+  if (PUBLIC.has(url.pathname)) return context.next()
   const expected = await token(password)
 
   if (url.pathname === '/__logout') {
@@ -82,6 +86,8 @@ function loginPage(wrong: boolean): Response {
 <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#07080d" /><meta name="robots" content="noindex" />
 <title>Expertise Engine</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" /><link rel="manifest" href="/manifest.webmanifest" />
+<meta name="apple-mobile-web-app-capable" content="yes" /><meta name="apple-mobile-web-app-title" content="Expertise Engine" /><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }

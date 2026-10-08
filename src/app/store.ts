@@ -9,7 +9,7 @@ import { DEFAULT_BUCKETS } from './highlight.ts'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://dfhjesjzceyhzbtojkcw.supabase.co'
 // Publishable key: designed to ship in the browser; RLS on the xe_ tables does the gating.
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_WM7N5CYAcW2owXhSc-Q7IQ_5Tv-fTsL'
+const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_KEY || 'sb_publishable_LiO_tqEBddThjxrV04PQeA_0wTebEie'
 
 export interface NewNode {
   parent_id: string | null

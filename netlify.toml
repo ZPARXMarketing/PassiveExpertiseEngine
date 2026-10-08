@@ -3,6 +3,11 @@
   publish = "dist"
   functions = "netlify/functions"
 
+# The Supabase publishable key is public by design (RLS gates the xe_ tables);
+# it is also the src/app/store.ts fallback, so the secrets scan must skip it.
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "VITE_SUPABASE_KEY"
+
 [[redirects]]
   from = "/*"
   to = "/index.html"

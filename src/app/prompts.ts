@@ -13,6 +13,25 @@ export const FACTCHECK_MODEL = 'perplexity/sonar'
 /** drafts Paths: reads pasted text, photos and PDFs of the assignment */
 export const PATH_MODEL = 'google/gemini-3.8-flash'
 
+/**
+ * POST to OpenRouter's chat completions, retrying a 429 (rate limit) up to 3 times.
+ * Waits Retry-After when given (capped at 10s), otherwise 1s, 2s, 4s.
+ */
+export async function postCompletion(headers: Record<string, string>, body: unknown): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    })
+    if (res.status !== 429 || attempt >= 3) return res
+    await res.body?.cancel().catch(() => {})
+    const after = Number(res.headers.get('retry-after'))
+    const wait = after > 0 ? Math.min(after * 1000, 10_000) : 1000 * 2 ** attempt
+    await new Promise((r) => setTimeout(r, wait))
+  }
+}
+
 export type GenKind =
   | 'branches'
   | 'courses'

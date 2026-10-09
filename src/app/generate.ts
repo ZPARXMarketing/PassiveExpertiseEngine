@@ -6,10 +6,11 @@
 
 import {
   DEFAULT_MODEL,
-  OPENROUTER_BASE_URL,
   SPEECH_MODEL,
   chunkScript,
   completionBody,
+  errorDetail,
+  postCompletion,
   listSpeechModels,
   pickSpeechModel,
   sortVoices,
@@ -76,14 +77,13 @@ export async function generate(req: GenRequest, settings: Settings, onText?: (so
 
   if (key) {
     model = modelFor(req.kind, settings.model)
-    const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, 'X-Title': 'Expertise Engine' },
-      body: JSON.stringify(completionBody(req, model)),
-    })
-    // a rejected browser key falls back to the site's key instead of failing
-    if (res.status === 401 || res.status === 403) viaSite = true
-    else if (!res.ok || !res.body) throw new Error(`OpenRouter returned ${res.status}.`)
+    const res = await postCompletion({ authorization: `Bearer ${key}`, 'X-Title': 'Expertise Engine' }, completionBody(req, model))
+    // a rejected or still rate-limited browser key falls back to the site's key instead of failing
+    if (res.status === 401 || res.status === 403 || res.status === 429) viaSite = true
+    else if (!res.ok || !res.body) {
+      const detail = errorDetail(await res.text().catch(() => ''))
+      throw new Error(`OpenRouter returned ${res.status}${detail ? `: ${detail}` : '.'}`)
+    }
     else text = await readAll(res.body.pipeThrough(sseToText()), onText)
   }
   if (viaSite) {

@@ -4,6 +4,10 @@
  * instant, so the plan re-flows whenever a step is ticked off, a path changes or
  * availability changes (falling behind = the rest moves forward).
  *
+ * Each day is shared by the top few paths with work left (up to SUBJECTS_PER_DAY), taking
+ * turns in sittings of up to an hour, weighted so the higher a path is the bigger its share.
+ * One path alone keeps the day to itself, and a path that finishes hands its place on.
+ *
  * Priority = the learner's own order (the Cal list, top first). Paths not placed in that
  * list yet fall in by timing: ASAP first, then by due date, then No rush. Nothing moves
  * on its own: if the order makes a dated path late, the outlook says so and the learner
@@ -50,6 +54,11 @@ export interface PathOutlook {
 
 /** smallest piece worth scheduling when a step has to be split */
 const MIN_PIECE = 20
+/** most paths studied on one day, and each one's share of the day by rank (top gets most) */
+const SUBJECTS_PER_DAY = 3
+const SHARE = [3, 2, 1]
+/** longest sitting before another path gets a turn (when there is another path that day) */
+const SITTING = 60
 /** plan at least this far ahead, and always past the latest due date (up to two years) */
 const MIN_DAYS = 180
 const MAX_DAYS = 730
@@ -120,16 +129,30 @@ function place(order: Path[], done: Set<string>, avail: Availability, meta: Path
   const horizon = Math.min(MAX_DAYS, Math.max(MIN_DAYS, toDue + 60))
   for (let i = 0; i < horizon && queues.some((q) => q.steps.length); i++, day.setDate(day.getDate() + 1)) {
     const key = dateKey(day)
+    const used = new Map<(typeof queues)[number], number>()
     for (const b of blocksOn(day, avail)) {
       let at = Math.max(toMin(b.start), i === 0 ? Math.ceil(startMin / 5) * 5 : 0)
       const end = toMin(b.end)
       while (end - at >= MIN_PIECE) {
-        const q = queues.find((x) => x.steps.length)
-        if (!q) break
+        // the top paths with work left share the day; whoever is furthest behind their share goes next
+        const active = queues.filter((x) => x.steps.length).slice(0, SUBJECTS_PER_DAY)
+        if (!active.length) break
+        const behind = (n: number) => (used.get(active[n]) ?? 0) / SHARE[n]
+        const q = active[active.reduce((best, _, n) => (behind(n) < behind(best) ? n : best), 0)]
         const step = q.steps[0]
-        const take = Math.min(step.left, end - at)
-        step.pieces++
-        sessions.push({ date: key, start: fromMin(at), end: fromMin(at + take), minutes: take, pathId: q.path.id, nodeId: step.node_id, part: '' })
+        let take = Math.min(step.left, end - at)
+        // cap the sitting so others get a turn, unless that would leave a scrap of step or block
+        if (active.length > 1 && take > SITTING && step.left - SITTING >= MIN_PIECE && end - at - SITTING >= MIN_PIECE) take = SITTING
+        const last = sessions[sessions.length - 1]
+        if (last && last.date === key && last.end === fromMin(at) && last.pathId === q.path.id && last.nodeId === step.node_id) {
+          // straight on with the same step: one longer session, not two pieces
+          last.end = fromMin(at + take)
+          last.minutes += take
+        } else {
+          step.pieces++
+          sessions.push({ date: key, start: fromMin(at), end: fromMin(at + take), minutes: take, pathId: q.path.id, nodeId: step.node_id, part: '' })
+        }
+        used.set(q, (used.get(q) ?? 0) + take)
         step.left -= take
         at += take
         if (step.left <= 0) {

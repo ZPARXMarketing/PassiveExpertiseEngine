@@ -18,6 +18,7 @@ import {
   errorDetail,
   isGenRequest,
   modelFor,
+  openRouterError,
   postCompletion,
   sseToText,
 } from '../../src/app/prompts.ts'
@@ -56,7 +57,7 @@ export default async (req: Request) => {
 
   if (!upstream.ok || !upstream.body) {
     const detail = errorDetail(await upstream.text().catch(() => ''))
-    return json({ error: `OpenRouter returned ${upstream.status}${detail ? `: ${detail}` : '.'}`, detail }, 502)
+    return json({ error: openRouterError(upstream.status, detail), detail }, 502)
   }
 
   return new Response(upstream.body.pipeThrough(sseToText()).pipeThrough(new TextEncoderStream()), {

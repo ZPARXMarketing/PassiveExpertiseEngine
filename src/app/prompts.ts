@@ -15,7 +15,8 @@ export const PATH_MODEL = 'google/gemini-3.8-flash'
 
 /**
  * POST to OpenRouter's chat completions, retrying a 429 (rate limit) up to 3 times.
- * Waits Retry-After when given (capped at 10s), otherwise 1s, 2s, 4s.
+ * Waits Retry-After when given (capped at 5s, so the edge function still answers well inside
+ * Netlify's 40s first-byte limit), otherwise 1s, 2s, 4s.
  */
 export async function postCompletion(headers: Record<string, string>, body: unknown): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
@@ -27,10 +28,14 @@ export async function postCompletion(headers: Record<string, string>, body: unkn
     if (res.status !== 429 || attempt >= 3) return res
     await res.body?.cancel().catch(() => {})
     const after = Number(res.headers.get('retry-after'))
-    const wait = after > 0 ? Math.min(after * 1000, 10_000) : 1000 * 2 ** attempt
+    const wait = after > 0 ? Math.min(after * 1000, 5000) : 1000 * 2 ** attempt
     await new Promise((r) => setTimeout(r, wait))
   }
 }
+
+/** "OpenRouter returned 429: <OpenRouter's reason>" for a failed completion. */
+export const openRouterError = (status: number, detail: string) =>
+  `OpenRouter returned ${status}${detail ? `: ${detail}` : '.'}`
 
 export type GenKind =
   | 'branches'

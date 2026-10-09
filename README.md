@@ -43,6 +43,9 @@ Subjects (left rail) → Branches → Courses → Syllabus → Chapter text
 - **Timing** per scheduled path: **ASAP**, **By a date** or **No rush**. The Cal order decides
   priority; timing only decides where a newly scheduled path joins it (ASAP on top, dated by due
   date, No rush at the bottom) and which dates it must make.
+- **Days are shared**: each day goes to the top three paths with work left, taking turns in
+  sittings of up to an hour, split 3 : 2 : 1 by rank (top gets most). A path alone gets the
+  whole day; when one finishes, the next path takes its place.
 - **Cal plan** — every scheduled path together at three linked zoom levels, top to bottom **Week**, **Month**, **Year**. **Year** (one bar per
   path from first to last session, ◆ due dates, the part past a due date in red; tap to expand
   the weekly load: hours per week stacked by path against free time), **Month** (each day's time

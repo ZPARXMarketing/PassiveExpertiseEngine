@@ -14,10 +14,12 @@ import type { Config } from '@netlify/edge-functions'
 import {
   DEFAULT_MODEL,
   FACTCHECK_MODEL,
-  OPENROUTER_BASE_URL,
   completionBody,
+  errorDetail,
   isGenRequest,
   modelFor,
+  openRouterError,
+  postCompletion,
   sseToText,
 } from '../../src/app/prompts.ts'
 
@@ -41,23 +43,21 @@ export default async (req: Request) => {
 
   let upstream: Response
   try {
-    upstream = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
+    upstream = await postCompletion(
+      {
         authorization: `Bearer ${apiKey}`,
         'HTTP-Referer': Netlify.env.get('URL') || 'https://passiveexpertise.netlify.app',
         'X-Title': 'Expertise Engine',
       },
-      body: JSON.stringify(completionBody(body, model)),
-    })
+      completionBody(body, model),
+    )
   } catch {
     return json({ error: 'Could not reach OpenRouter.' }, 502)
   }
 
   if (!upstream.ok || !upstream.body) {
-    const detail = await upstream.text().catch(() => '')
-    return json({ error: `OpenRouter returned ${upstream.status}.`, detail: detail.slice(0, 400) }, 502)
+    const detail = errorDetail(await upstream.text().catch(() => ''))
+    return json({ error: openRouterError(upstream.status, detail), detail }, 502)
   }
 
   return new Response(upstream.body.pipeThrough(sseToText()).pipeThrough(new TextEncoderStream()), {

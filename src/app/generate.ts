@@ -6,10 +6,12 @@
 
 import {
   DEFAULT_MODEL,
-  OPENROUTER_BASE_URL,
   SPEECH_MODEL,
   chunkScript,
   completionBody,
+  errorDetail,
+  openRouterError,
+  postCompletion,
   listSpeechModels,
   pickSpeechModel,
   sortVoices,
@@ -73,17 +75,17 @@ export async function generate(req: GenRequest, settings: Settings, onText?: (so
   let text = ''
   let model = ''
   let viaSite = !key
+  // the browser key's 429, shown if the site has no key of its own to fall back to
+  let limited = ''
 
   if (key) {
     model = modelFor(req.kind, settings.model)
-    const res = await fetch(`${OPENROUTER_BASE_URL}/chat/completions`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${key}`, 'X-Title': 'Expertise Engine' },
-      body: JSON.stringify(completionBody(req, model)),
-    })
-    // a rejected browser key falls back to the site's key instead of failing
-    if (res.status === 401 || res.status === 403) viaSite = true
-    else if (!res.ok || !res.body) throw new Error(`OpenRouter returned ${res.status}.`)
+    const res = await postCompletion({ authorization: `Bearer ${key}`, 'X-Title': 'Expertise Engine' }, completionBody(req, model))
+    // a rejected or still rate-limited browser key falls back to the site's key instead of failing
+    if (res.status === 401 || res.status === 403 || res.status === 429) {
+      viaSite = true
+      if (res.status === 429) limited = openRouterError(res.status, errorDetail(await res.text().catch(() => '')))
+    } else if (!res.ok || !res.body) throw new Error(openRouterError(res.status, errorDetail(await res.text().catch(() => ''))))
     else text = await readAll(res.body.pipeThrough(sseToText()), onText)
   }
   if (viaSite) {
@@ -93,6 +95,7 @@ export async function generate(req: GenRequest, settings: Settings, onText?: (so
       body: JSON.stringify(req),
     })
     if (!res.ok || !res.body) {
+      if (limited && res.status === 501) throw new Error(limited)
       const data = (await res.json().catch(() => null)) as { error?: string } | null
       throw new Error(data?.error ?? 'Generation is unavailable here. Add an OpenRouter key in Settings.')
     }
